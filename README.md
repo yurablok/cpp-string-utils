@@ -9,12 +9,25 @@ std::string_view result = utils::to_string(12.34f, buffer);
 assert(!result.empty());
 assert(result == "12.34");
 ```
+```cpp
+std::string buffer(32, '\0');
+std::string_view result = utils::to_string(0xDEADBEEF, buffer, true);
+assert(!result.empty());
+assert(result == "deadbeef");
+```
 
 ## `from_string`
 ```cpp
 float f32 = 0.0f;
 assert(utils::from_string("12.34", f32));
 assert(f32 == 12.34f);
+```
+```cpp
+uint32_t u32 = 0;
+assert(utils::from_string("DEADBEEF", u32, true));
+assert(u32 = 0xDEADBEEF);
+assert(utils::from_string("deadbeef", u32, true));
+assert(u32 = 0xDEADBEEF);
 ```
 
 ## `trimm`

@@ -6,6 +6,7 @@
 // License: BSL-1.0
 // https://github.com/yurablok/cpp-string-utils
 // History:
+// v0.2 2022-Dec-23     Added `hex` option into `to_string` and `from_string`.
 // v0.1 2022-Dec-23     First release.
 
 #pragma once
@@ -67,7 +68,7 @@ inline std::string_view trimm(std::string_view string, const std::string_view by
 
 inline void split(const std::string_view str, const std::string_view by,
         const std::function<void(std::string_view part, uint32_t idx)> handler,
-        const bool withEmpty = false, const char escape = '\\') {
+        const bool withEmpty = false, const char escape = '\\') noexcept {
     if (by.empty() || !handler) {
         return;
     }
@@ -102,7 +103,7 @@ inline void split(const std::string_view str, const std::string_view by,
 
 inline std::string_view substr(const std::string_view str, uint32_t& offset,
         const std::string_view split_by,
-        const bool withEmpty = false, const char escape = '\\') {
+        const bool withEmpty = false, const char escape = '\\') noexcept {
     if (split_by.empty()) {
         return std::string_view();
     }
@@ -220,11 +221,13 @@ template<typename integer_t,
     typename std::enable_if<
         std::is_integral<integer_t>::value, bool
     >::type = true>
-inline std::string_view to_string(const integer_t number, const std::string_view buffer) noexcept {
+inline std::string_view to_string(const integer_t number, const std::string_view buffer,
+        const bool hex = false) noexcept {
     const auto [ptr, ec] = std::to_chars(
         const_cast<char*>(buffer.data()),
         const_cast<char*>(buffer.data() + buffer.size()),
-        number
+        number,
+        hex ? 16 : 10
     );
     if (ec != std::errc(0)) {
         return {};
@@ -242,9 +245,10 @@ inline std::string_view to_string(const int8_t number, const std::string_view bu
     }
     return buffer.substr(0, length);
 }
-inline std::string_view to_string(const uint8_t number, const std::string_view buffer) noexcept {
+inline std::string_view to_string(const uint8_t number, const std::string_view buffer,
+        const bool hex = false) noexcept {
     const int32_t length = std::snprintf(const_cast<char*>(
-        buffer.data()), buffer.size(), "%" PRIu8, number);
+        buffer.data()), buffer.size(), hex ? "%" PRIx8 : "%" PRIu8, number);
     if (length <= 0) {
         return {};
     }
@@ -258,9 +262,10 @@ inline std::string_view to_string(const int16_t number, const std::string_view b
     }
     return buffer.substr(0, length);
 }
-inline std::string_view to_string(const uint16_t number, const std::string_view buffer) noexcept {
+inline std::string_view to_string(const uint16_t number, const std::string_view buffer,
+        const bool hex = false) noexcept {
     const int32_t length = std::snprintf(const_cast<char*>(
-        buffer.data()), buffer.size(), "%" PRIu16, number);
+        buffer.data()), buffer.size(), hex ? "%" PRIx16 : "%" PRIu16, number);
     if (length <= 0) {
         return {};
     }
@@ -274,9 +279,10 @@ inline std::string_view to_string(const int32_t number, const std::string_view b
     }
     return buffer.substr(0, length);
 }
-inline std::string_view to_string(const uint32_t number, const std::string_view buffer) noexcept {
+inline std::string_view to_string(const uint32_t number, const std::string_view buffer,
+        const bool hex = false) noexcept {
     const int32_t length = std::snprintf(const_cast<char*>(
-        buffer.data()), buffer.size(), "%" PRIu32, number);
+        buffer.data()), buffer.size(), hex ? "%" PRIx32 : "%" PRIu32, number);
     if (length <= 0) {
         return {};
     }
@@ -290,9 +296,10 @@ inline std::string_view to_string(const int64_t number, const std::string_view b
     }
     return buffer.substr(0, length);
 }
-inline std::string_view to_string(const uint64_t number, const std::string_view buffer) noexcept {
+inline std::string_view to_string(const uint64_t number, const std::string_view buffer,
+        const bool hex = false) noexcept {
     const int32_t length = std::snprintf(const_cast<char*>(
-        buffer.data()), buffer.size(), "%" PRIu64, number);
+        buffer.data()), buffer.size(), hex ? "%" PRIx64 : "%" PRIu64, number);
     if (length <= 0) {
         return {};
     }
@@ -354,11 +361,13 @@ template<typename integer_t,
     typename std::enable_if<
         std::is_integral<integer_t>::value, bool
     >::type = true>
-inline bool from_string(const std::string_view string, integer_t& number) noexcept {
+inline bool from_string(const std::string_view string, integer_t& number,
+        const bool hex = false) noexcept {
     auto [ptr, ec] = std::from_chars(
         string.data(),
         string.data() + string.size(),
-        number
+        number,
+        hex ? 16 : 10
     );
     if (ptr != string.data() + string.size() || ec != std::errc(0)) {
         return false;
@@ -377,9 +386,10 @@ inline bool from_string(const std::string_view string, int8_t& number) noexcept 
     }
     return true;
 }
-inline bool from_string(const std::string_view string, uint8_t& number) noexcept {
+inline bool from_string(const std::string_view string, uint8_t& number,
+        const bool hex = false) noexcept {
     char format[8];
-    std::snprintf(format, sizeof(format), "%%%u" SCNu8,
+    std::snprintf(format, sizeof(format), hex ? "%%%u" SCNx8 : "%%%u" SCNu8,
         static_cast<uint32_t>(string.size()));
     if (std::sscanf(string.data(), format, &number) != 1) {
         return false;
@@ -395,9 +405,10 @@ inline bool from_string(const std::string_view string, int16_t& number) noexcept
     }
     return true;
 }
-inline bool from_string(const std::string_view string, uint16_t& number) noexcept {
+inline bool from_string(const std::string_view string, uint16_t& number,
+        const bool hex = false) noexcept {
     char format[8];
-    std::snprintf(format, sizeof(format), "%%%u" SCNu16,
+    std::snprintf(format, sizeof(format), hex ? "%%%u" SCNx16 : "%%%u" SCNu16,
         static_cast<uint32_t>(string.size()));
     if (std::sscanf(string.data(), format, &number) != 1) {
         return false;
@@ -413,9 +424,10 @@ inline bool from_string(const std::string_view string, int32_t& number) noexcept
     }
     return true;
 }
-inline bool from_string(const std::string_view string, uint32_t& number) noexcept {
+inline bool from_string(const std::string_view string, uint32_t& number,
+        const bool hex = false) noexcept {
     char format[8];
-    std::snprintf(format, sizeof(format), "%%%u" SCNu32,
+    std::snprintf(format, sizeof(format), hex ? "%%%u" SCNx32 : "%%%u" SCNu32,
         static_cast<uint32_t>(string.size()));
     if (std::sscanf(string.data(), format, &number) != 1) {
         return false;
@@ -431,9 +443,10 @@ inline bool from_string(const std::string_view string, int64_t& number) noexcept
     }
     return true;
 }
-inline bool from_string(const std::string_view string, uint64_t& number) noexcept {
+inline bool from_string(const std::string_view string, uint64_t& number,
+        const bool hex = false) noexcept {
     char format[8];
-    std::snprintf(format, sizeof(format), "%%%u" SCNu64,
+    std::snprintf(format, sizeof(format), hex ? "%%%u" SCNx64 : "%%%u" SCNu64,
         static_cast<uint32_t>(string.size()));
     if (std::sscanf(string.data(), format, &number) != 1) {
         return false;
