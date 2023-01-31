@@ -6,6 +6,7 @@
 // License: BSL-1.0
 // https://github.com/yurablok/cpp-string-utils
 // History:
+// v0.3 2023-Feb-01     `from_string` now checks for a null string.
 // v0.2 2022-Dec-23     Added `hex` option into `to_string` and `from_string`.
 // v0.1 2022-Dec-23     First release.
 
@@ -41,6 +42,10 @@
 #   include "string_view.hpp" // https://github.com/martinmoene/string-view-lite
 namespace std {
     using string_view = nonstd::string_view;
+}
+inline std::string& operator+=(std::string& a, const std::string_view b) {
+    a.insert(a.end(), b.cbegin(), b.cend());
+    return a;
 }
 #endif
 #if !defined(CPP_STRING_UTILS_LIB_CHARCONV_FLOAT)
@@ -357,27 +362,43 @@ inline std::string_view to_string(const double number, const std::string_view bu
 
 #if defined(CPP_STRING_UTILS_LIB_CHARCONV)
 
-template<typename integer_t,
-    typename std::enable_if<
-        std::is_integral<integer_t>::value, bool
-    >::type = true>
-inline bool from_string(const std::string_view string, integer_t& number,
+template<typename string_t, typename integer_t,
+    typename std::enable_if_t<!std::is_trivial_v<string_t>, bool> = true,
+    typename std::enable_if_t<std::is_integral_v<integer_t>, bool> = true>
+inline bool from_string(const string_t& string, integer_t& number,
         const bool hex = false) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char));
     auto [ptr, ec] = std::from_chars(
-        string.data(),
-        string.data() + string.size(),
+        reinterpret_cast<const char*>(string.data()),
+        reinterpret_cast<const char*>(string.data()) + string.size(),
         number,
         hex ? 16 : 10
     );
-    if (ptr != string.data() + string.size() || ec != std::errc(0)) {
+    if (ptr != reinterpret_cast<const char*>(string.data()) + string.size()
+            || ec != std::errc(0)) {
         return false;
     }
     return true;
 }
+template<typename string_t, typename integer_t,
+    typename std::enable_if_t<std::is_trivial_v<string_t>, bool> = true,
+    typename std::enable_if_t<std::is_integral_v<integer_t>, bool> = true>
+inline bool from_string(const string_t string, integer_t& number,
+        const bool hex = false) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char));
+    if (string == nullptr) {
+        return false;
+    }
+    return from_string(std::string_view(
+        reinterpret_cast<const char*>(string)), number, hex);
+}
 
 #else // !CPP_STRING_UTILS_LIB_CHARCONV
 
-inline bool from_string(const std::string_view string, int8_t& number) noexcept {
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, int8_t& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), "%%%u" SCNi8,
         static_cast<uint32_t>(string.size()));
@@ -386,8 +407,11 @@ inline bool from_string(const std::string_view string, int8_t& number) noexcept 
     }
     return true;
 }
-inline bool from_string(const std::string_view string, uint8_t& number,
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, uint8_t& number,
         const bool hex = false) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), hex ? "%%%u" SCNx8 : "%%%u" SCNu8,
         static_cast<uint32_t>(string.size()));
@@ -396,7 +420,10 @@ inline bool from_string(const std::string_view string, uint8_t& number,
     }
     return true;
 }
-inline bool from_string(const std::string_view string, int16_t& number) noexcept {
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, int16_t& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), "%%%u" SCNi16,
         static_cast<uint32_t>(string.size()));
@@ -405,8 +432,11 @@ inline bool from_string(const std::string_view string, int16_t& number) noexcept
     }
     return true;
 }
-inline bool from_string(const std::string_view string, uint16_t& number,
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, uint16_t& number,
         const bool hex = false) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), hex ? "%%%u" SCNx16 : "%%%u" SCNu16,
         static_cast<uint32_t>(string.size()));
@@ -415,7 +445,10 @@ inline bool from_string(const std::string_view string, uint16_t& number,
     }
     return true;
 }
-inline bool from_string(const std::string_view string, int32_t& number) noexcept {
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, int32_t& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), "%%%u" SCNi32,
         static_cast<uint32_t>(string.size()));
@@ -424,8 +457,11 @@ inline bool from_string(const std::string_view string, int32_t& number) noexcept
     }
     return true;
 }
-inline bool from_string(const std::string_view string, uint32_t& number,
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, uint32_t& number,
         const bool hex = false) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), hex ? "%%%u" SCNx32 : "%%%u" SCNu32,
         static_cast<uint32_t>(string.size()));
@@ -434,7 +470,10 @@ inline bool from_string(const std::string_view string, uint32_t& number,
     }
     return true;
 }
-inline bool from_string(const std::string_view string, int64_t& number) noexcept {
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, int64_t& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), "%%%u" SCNi64,
         static_cast<uint32_t>(string.size()));
@@ -443,8 +482,11 @@ inline bool from_string(const std::string_view string, int64_t& number) noexcept
     }
     return true;
 }
-inline bool from_string(const std::string_view string, uint64_t& number,
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, uint64_t& number,
         const bool hex = false) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), hex ? "%%%u" SCNx64 : "%%%u" SCNu64,
         static_cast<uint32_t>(string.size()));
@@ -453,30 +495,55 @@ inline bool from_string(const std::string_view string, uint64_t& number,
     }
     return true;
 }
+template<typename string_t, typename integer_t,
+    typename std::enable_if<std::is_trivial<string_t>::value, bool>::type = true,
+    typename std::enable_if<std::is_integral<integer_t>::value, bool>::type = true>
+inline bool from_string(const string_t string, integer_t& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
+    if (string == nullptr) {
+        return false;
+    }
+    return from_string(std::string_view(string), number);
+}
 
-#endif
+#endif // CPP_STRING_UTILS_LIB_CHARCONV
 
 #if defined(CPP_STRING_UTILS_LIB_CHARCONV_FLOAT)
 
-template<typename floating_t,
-    typename std::enable_if<
-        std::is_floating_point<floating_t>::value, bool
-    >::type = true>
-inline bool from_string(const std::string_view string, floating_t& number) noexcept {
+template<typename string_t, typename floating_t,
+    typename std::enable_if_t<!std::is_trivial_v<string_t>, bool> = true,
+    typename std::enable_if_t<std::is_floating_point_v<floating_t>, bool> = true>
+inline bool from_string(const string_t string, floating_t& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char));
     auto [ptr, ec] = std::from_chars(
-        string.data(),
-        string.data() + string.size(),
+        reinterpret_cast<const char*>(string.data()),
+        reinterpret_cast<const char*>(string.data()) + string.size(),
         number
     );
-    if (ptr != string.data() + string.size() || ec != std::errc(0)) {
+    if (ptr != reinterpret_cast<const char*>(string.data()) + string.size()
+            || ec != std::errc(0)) {
         return false;
     }
     return true;
 }
+template<typename string_t, typename floating_t,
+    typename std::enable_if_t<std::is_trivial_v<string_t>, bool> = true,
+    typename std::enable_if_t<std::is_floating_point_v<floating_t>, bool> = true>
+inline bool from_string(const string_t string, floating_t& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char));
+    if (string == nullptr) {
+        return false;
+    }
+    return from_string(std::string_view(
+        reinterpret_cast<const char*>(string)), number);
+}
 
 #else // !CPP_STRING_UTILS_LIB_CHARCONV_FLOAT
 
-inline bool from_string(const std::string_view string, float& number) noexcept {
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, float& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), "%%%uf",
         static_cast<uint32_t>(string.size()));
@@ -485,7 +552,10 @@ inline bool from_string(const std::string_view string, float& number) noexcept {
     }
     return true;
 }
-inline bool from_string(const std::string_view string, double& number) noexcept {
+template<typename string_t,
+    typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
+inline bool from_string(const string_t& string, double& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), "%%%ulf",
         static_cast<uint32_t>(string.size()));
@@ -493,6 +563,16 @@ inline bool from_string(const std::string_view string, double& number) noexcept 
         return false;
     }
     return true;
+}
+template<typename string_t, typename floating_t,
+    typename std::enable_if<std::is_trivial<string_t>::value, bool>::type = true,
+    typename std::enable_if<std::is_floating_point<floating_t>::value, bool>::type = true>
+inline bool from_string(const string_t string, floating_t& number) noexcept {
+    static_assert(sizeof(string[0]) == sizeof(char), "");
+    if (string == nullptr) {
+        return false;
+    }
+    return from_string(std::string_view(string), number);
 }
 
 #endif // CPP_STRING_UTILS_LIB_CHARCONV_FLOAT
