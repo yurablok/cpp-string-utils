@@ -6,6 +6,7 @@
 // License: BSL-1.0
 // https://github.com/yurablok/cpp-string-utils
 // History:
+// v0.5 2023-Feb-14     Fixed `substr`.
 // v0.4 2023-Feb-09     Added `checked_string_view`.
 // v0.3 2023-Feb-01     `from_string` now checks for a null string.
 // v0.2 2022-Dec-23     Added `hex` option into `to_string` and `from_string`.
@@ -117,7 +118,7 @@ inline void split(const checked_string_view str, const checked_string_view by,
     if (by.empty() || !handler) {
         return;
     }
-    uint32_t begin = 0;
+    size_t begin = 0;
     bool isPrevEscape = false;
     uint32_t idx = 0;
     for (size_t i = 0; i < str.size(); ++i) {
@@ -146,16 +147,16 @@ inline void split(const checked_string_view str, const checked_string_view by,
     }
 }
 
-inline std::string_view substr(const checked_string_view str, uint32_t& offset,
+inline std::string_view substr(const checked_string_view str, size_t& offset,
         const checked_string_view split_by,
         const bool withEmpty = false, const char escape = '\\') noexcept {
     if (split_by.empty()) {
-        return std::string_view();
+        return {};
     }
     if (offset >= str.size()) {
-        return std::string_view();
+        return {};
     }
-    uint32_t begin = offset;
+    size_t begin = offset;
     bool isPrevEscape = false;
     for (; offset < str.size(); ++offset) {
         if (!isPrevEscape) {
@@ -172,7 +173,6 @@ inline std::string_view substr(const checked_string_view str, uint32_t& offset,
             continue;
         }
         const std::string_view part = str.substr(begin, offset - begin);
-        ++offset;
         if (withEmpty || !part.empty()) {
             return part;
         }
@@ -183,7 +183,7 @@ inline std::string_view substr(const checked_string_view str, uint32_t& offset,
     if (!part.empty()) {
         return part;
     }
-    return std::string_view();
+    return {};
 }
 
 inline void parseCSV(const checked_string_view csv,
