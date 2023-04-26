@@ -6,6 +6,7 @@
 // License: BSL-1.0
 // https://github.com/yurablok/cpp-string-utils
 // History:
+// v0.6 2023-Apr-26     Fixed build with clang-cl. Fixed `substr` [2].
 // v0.5 2023-Feb-14     Fixed `substr`.
 // v0.4 2023-Feb-09     Added `checked_string_view`.
 // v0.3 2023-Feb-01     `from_string` now checks for a null string.
@@ -24,7 +25,7 @@
 #   define CPP_STRING_UTILS_LIB_CHARCONV
 #   define CPP_STRING_UTILS_LIB_CHARCONV_FLOAT
 #elif __cplusplus >= 201703L
-#   if defined(__GNUG__)
+#   if defined(__GNUG__) && !defined(__llvm__)
 #       if __GNUC__ >= 8 && __GNUC_MINOR__ >= 1
 #           define CPP_STRING_UTILS_LIB_CHARCONV
 #           if defined(__cpp_lib_to_chars) || defined(_GLIBCXX_HAVE_USELOCALE)
@@ -34,6 +35,13 @@
 #   else
 #       define CPP_STRING_UTILS_LIB_CHARCONV
 #       define CPP_STRING_UTILS_LIB_CHARCONV_FLOAT
+#   endif
+#   ifndef _CONSTEXPR17
+#       define _CONSTEXPR17 constexpr
+#   endif
+#else
+#   ifndef _CONSTEXPR17
+#       define _CONSTEXPR17 inline
 #   endif
 #endif
 
@@ -59,36 +67,36 @@ namespace utils {
 
 class checked_string_view : public std::string_view {
 public:
-    constexpr checked_string_view()
+    _CONSTEXPR17 checked_string_view()
         : std::string_view() {}
-    constexpr checked_string_view(const checked_string_view& str)
+    _CONSTEXPR17 checked_string_view(const checked_string_view& str)
         : std::string_view(str) {}
-    constexpr checked_string_view(checked_string_view&& str)
+    _CONSTEXPR17 checked_string_view(checked_string_view&& str)
         : std::string_view(std::move(str)) {}
-    constexpr checked_string_view(const char* str)
+    _CONSTEXPR17 checked_string_view(const char* str)
         : std::string_view(str == nullptr ? "" : str) {}
-    constexpr checked_string_view(const char* str, size_t size)
+    _CONSTEXPR17 checked_string_view(const char* str, size_t size)
         : std::string_view(str == nullptr ? "" : str, size) {}
-    constexpr checked_string_view(const std::string& str)
+    inline checked_string_view(const std::string& str)
         : std::string_view(str.c_str(), str.size()) {}
-    constexpr checked_string_view(const std::string_view str)
+    _CONSTEXPR17 checked_string_view(const std::string_view str)
         : std::string_view(str) {}
 
     template<typename string_t,
         typename std::enable_if<!std::is_trivial<string_t>::value, bool>::type = true>
-    constexpr checked_string_view(const string_t& str)
+    inline checked_string_view(const string_t& str)
         : std::string_view(
             reinterpret_cast<const char*>(str.c_str()), str.size()) {}
 
     template<typename string_t,
         typename std::enable_if<std::is_trivial<string_t>::value, bool>::type = true>
-    constexpr checked_string_view(const string_t str)
+    _CONSTEXPR17 checked_string_view(const string_t str)
         : std::string_view(str == nullptr ? ""
             : reinterpret_cast<const char*>(str)) {}
 
     template<typename string_t,
         typename std::enable_if<std::is_trivial<string_t>::value, bool>::type = true>
-    constexpr checked_string_view(const string_t str, size_t size)
+    _CONSTEXPR17 checked_string_view(const string_t str, size_t size)
         : std::string_view(str == nullptr ? ""
             : reinterpret_cast<const char*>(str), size) {}
 
@@ -174,6 +182,7 @@ inline std::string_view substr(const checked_string_view str, size_t& offset,
         }
         const std::string_view part = str.substr(begin, offset - begin);
         if (withEmpty || !part.empty()) {
+            ++offset;
             return part;
         }
         begin = offset + 1;
@@ -269,8 +278,8 @@ template<typename integer_t,
 inline std::string_view to_string(const integer_t number, const std::string_view buffer,
         const bool hex = false) noexcept {
     const auto [ptr, ec] = std::to_chars(
-        buffer.data(),
-        buffer.data() + buffer.size(),
+        const_cast<char*>(buffer.data()),
+        const_cast<char*>(buffer.data() + buffer.size()),
         number,
         hex ? 16 : 10
     );
@@ -358,7 +367,8 @@ inline std::string_view to_string(const uint64_t number, const std::string_view 
 template<typename floating_t,
     typename std::enable_if<
         std::is_floating_point<floating_t>::value, bool
-    >::type = true>
+    >::type = true,
+    typename _ = bool>
 inline std::string_view to_string(const floating_t number, const std::string_view buffer) noexcept {
     const auto [ptr, ec] = std::to_chars(
         const_cast<char*>(buffer.data()),
