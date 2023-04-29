@@ -461,7 +461,6 @@ inline bool from_string(const checked_string_view string, int16_t& number) noexc
 }
 inline bool from_string(const checked_string_view string, uint16_t& number,
         const bool hex = false) noexcept {
-    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), hex ? "%%%u" SCNx16 : "%%%u" SCNu16,
         static_cast<uint32_t>(string.size()));
@@ -539,7 +538,6 @@ inline bool from_string(const checked_string_view string, float& number) noexcep
     return true;
 }
 inline bool from_string(const checked_string_view string, double& number) noexcept {
-    static_assert(sizeof(string[0]) == sizeof(char), "");
     char format[8];
     std::snprintf(format, sizeof(format), "%%%ulf",
         static_cast<uint32_t>(string.size()));

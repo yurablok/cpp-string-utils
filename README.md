@@ -25,9 +25,9 @@ assert(f32 == 12.34f);
 ```cpp
 uint32_t u32 = 0;
 assert(utils::from_string("DEADBEEF", u32, true));
-assert(u32 = 0xDEADBEEF);
+assert(u32 == 0xDEADBEEF);
 assert(utils::from_string("deadbeef", u32, true));
-assert(u32 = 0xDEADBEEF);
+assert(u32 == 0xDEADBEEF);
 ```
 
 ## `trimm`
