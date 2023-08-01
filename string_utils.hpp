@@ -104,7 +104,7 @@ public:
 };
 
 inline std::string_view trimm(checked_string_view string,
-        const checked_string_view by = "\t\n\r ") noexcept {
+        const checked_string_view by = std::string_view("\t\n\r \0", 5)) noexcept {
     while (!string.empty()) {
         if (by.find(string.front()) == std::string_view::npos) {
             break;
