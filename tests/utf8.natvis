@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+    <Type Name="tiny_utf8::basic_string&lt;char32_t,char8_t,*&gt;">
+        <AlternativeType Name="tiny_utf8::basic_string&lt;char32_t,char,*&gt;" />
+
+        <Intrinsic Name="_small_" Expression="!(t_sso.data_len &amp; 0x1)" />
+        <Intrinsic Name="_sizeof_" Expression="sizeof(void*) * 4" />
+        <Intrinsic Name="_size_b_" Expression="_small_()
+                   ? _sizeof_() - (t_sso.data_len &gt;&gt; 1) - 1
+                   : t_non_sso.data_len" />
+        <Intrinsic Name="_capacity_b_" Expression="_small_()
+                   ? _sizeof_() - 1
+                   : t_non_sso.buffer_size - 1" />
+        <Intrinsic Name="_data_" Expression="_small_() ? t_sso.data : t_non_sso.data" />
+        <DisplayString Condition="_small_()">{t_sso.data,s8}</DisplayString>
+        <DisplayString Condition="!_small_()">{t_non_sso.data,s8}</DisplayString>
+        <StringView Condition="_small_()">t_sso.data,s8</StringView>
+        <StringView Condition="!_small_()">t_non_sso.data,s8</StringView>
+
+        <Expand>
+            <Item Name="[size_b]" ExcludeView="simple">_size_b_()</Item>
+            <Item Name="[length]" ExcludeView="simple">length()</Item>
+            <Item Name="[capacity_b]" ExcludeView="simple">_capacity_b_()</Item>
+            <Item Name="[SSO]" ExcludeView="simple">_small_()</Item>
+
+            <CustomListItems>
+                <Variable Name="offset" InitialValue="0"/>
+                <Variable Name="index" InitialValue="0"/>
+                <Variable Name="width" InitialValue="0"/>
+                <Variable Name="ch" InitialValue="0"/>
+                <Loop>
+                    <Break Condition="offset >= _size_b_() || offset >= 1000"/>
+                    <If Condition="(_data_()[offset] &amp; 0x80) == 0x00">
+                        <!-- 1 - 0xxxxxxx -->
+                        <Exec>width = 1</Exec>
+                        <Exec>ch = _data_()[offset]</Exec>
+                    </If>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xE0) == 0xC0">
+                        <!-- 2 - 110xxxxx 10xxxxxx -->
+                        <Exec>width = 2</Exec>
+                        <Exec>ch = ((_data_()[offset]     &amp; 0x1F) &lt;&lt; 6)
+                                 |  (_data_()[offset + 1] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xF0) == 0xE0">
+                        <!-- 3 - 1110xxxx 10xxxxxx 10xxxxxx -->
+                        <Exec>width = 3</Exec>
+                        <Exec>ch = ((_data_()[offset]     &amp; 0x0F) &lt;&lt; 12)
+                                 | ((_data_()[offset + 1] &amp; 0x3F) &lt;&lt; 6)
+                                 |  (_data_()[offset + 2] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xF8) == 0xF0">
+                        <!-- 4 - 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx -->
+                        <Exec>width = 4</Exec>
+                        <Exec>ch = ((_data_()[offset]     &amp; 0x07) &lt;&lt; 18)
+                                 | ((_data_()[offset + 1] &amp; 0x3F) &lt;&lt; 12)
+                                 | ((_data_()[offset + 2] &amp; 0x3F) &lt;&lt; 6)
+                                 |  (_data_()[offset + 3] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xFC) == 0xF8">
+                        <!-- 5 - 111110xx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx -->
+                        <Exec>width = 5</Exec>
+                        <Exec>ch = ((_data_()[offset]     &amp; 0x03) &lt;&lt; 24)
+                                 | ((_data_()[offset + 1] &amp; 0x3F) &lt;&lt; 18)
+                                 | ((_data_()[offset + 2] &amp; 0x3F) &lt;&lt; 12)
+                                 | ((_data_()[offset + 3] &amp; 0x3F) &lt;&lt; 6)
+                                 |  (_data_()[offset + 4] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Else>
+                        <Item>"[invalid_codepoint]"</Item>
+                        <Break/>
+                    </Else>
+                    <If Condition="offset + width > _size_b_()">
+                        <Item>"[unexpected_end]"</Item>
+                        <Break/>
+                    </If>
+                    <!-- The maximum value for a char item is 0xFFFF -->
+                    <If Condition="ch &gt; 0xFFFF">
+                        <Item Name="[{index}]   [{offset}]">ch,X</Item>
+                    </If>
+                    <Else>
+                        <!-- NOTE: Not checked for valid 10xxxxxx -->
+                        <Item Name="[{index}]   [{offset}]">ch,c</Item>
+                    </Else>
+                    <Exec>offset += width</Exec>
+                    <Exec>index += 1</Exec>
+                </Loop>
+            </CustomListItems>
+        </Expand>
+    </Type>
+
+    <Type Name="std::basic_string_view&lt;char,*&gt;">
+        <AlternativeType Name="std::basic_string_view&lt;char8_t,*&gt;" />
+
+        <Intrinsic Name="_size_b_" Expression="_Mysize" />
+        <Intrinsic Name="_data_" Expression="_Mydata" />
+        <DisplayString>{_data_(),s8}</DisplayString>
+        <StringView>_data_(),s8</StringView>
+
+        <Expand>
+            <Item Name="[size_b]" ExcludeView="simple">_size_b_()</Item>
+
+            <CustomListItems>
+                <Variable Name="offset" InitialValue="0"/>
+                <Variable Name="index" InitialValue="0"/>
+                <Variable Name="width" InitialValue="0"/>
+                <Variable Name="ch" InitialValue="0"/>
+                <Loop>
+                    <Break Condition="offset >= _size_b_() || offset >= 1000"/>
+                    <If Condition="(_data_()[offset] &amp; 0x80) == 0x00">
+                        <!-- 1 - 0xxxxxxx -->
+                        <Exec>width = 1</Exec>
+                        <Exec>ch = _data_()[offset]</Exec>
+                    </If>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xE0) == 0xC0">
+                        <!-- 2 - 110xxxxx 10xxxxxx -->
+                        <Exec>width = 2</Exec>
+                        <Exec>
+                            ch = ((_data_()[offset]     &amp; 0x1F) &lt;&lt; 6)
+                               |  (_data_()[offset + 1] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xF0) == 0xE0">
+                        <!-- 3 - 1110xxxx 10xxxxxx 10xxxxxx -->
+                        <Exec>width = 3</Exec>
+                        <Exec>
+                            ch = ((_data_()[offset]     &amp; 0x0F) &lt;&lt; 12)
+                               | ((_data_()[offset + 1] &amp; 0x3F) &lt;&lt; 6)
+                               |  (_data_()[offset + 2] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xF8) == 0xF0">
+                        <!-- 4 - 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx -->
+                        <Exec>width = 4</Exec>
+                        <Exec>
+                            ch = ((_data_()[offset]     &amp; 0x07) &lt;&lt; 18)
+                               | ((_data_()[offset + 1] &amp; 0x3F) &lt;&lt; 12)
+                               | ((_data_()[offset + 2] &amp; 0x3F) &lt;&lt; 6)
+                               |  (_data_()[offset + 3] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xFC) == 0xF8">
+                        <!-- 5 - 111110xx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx -->
+                        <Exec>width = 5</Exec>
+                        <Exec>
+                            ch = ((_data_()[offset]     &amp; 0x03) &lt;&lt; 24)
+                               | ((_data_()[offset + 1] &amp; 0x3F) &lt;&lt; 18)
+                               | ((_data_()[offset + 2] &amp; 0x3F) &lt;&lt; 12)
+                               | ((_data_()[offset + 3] &amp; 0x3F) &lt;&lt; 6)
+                               |  (_data_()[offset + 4] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Else>
+                        <Item>"[invalid_codepoint]"</Item>
+                        <Break/>
+                    </Else>
+                    <If Condition="offset + width > _size_b_()">
+                        <Item>"[unexpected_end]"</Item>
+                        <Break/>
+                    </If>
+                    <!-- The maximum value for a char item is 0xFFFF -->
+                    <If Condition="ch &gt; 0xFFFF">
+                        <Item Name="[{index}]   [{offset}]">ch,X</Item>
+                    </If>
+                    <Else>
+                        <!-- NOTE: Not checked for valid 10xxxxxx -->
+                        <Item Name="[{index}]   [{offset}]">ch,c</Item>
+                    </Else>
+                    <Exec>offset += width</Exec>
+                    <Exec>index += 1</Exec>
+                </Loop>
+            </CustomListItems>
+        </Expand>
+    </Type>
+
+    <Type Name="nonstd::sv_lite::basic_string_view&lt;char,*&gt;">
+        <Intrinsic Name="_size_b_" Expression="size_" />
+        <Intrinsic Name="_data_" Expression="data_" />
+        <DisplayString>{_data_(),s8}</DisplayString>
+        <StringView>_data_(),s8</StringView>
+
+        <Expand>
+            <Item Name="[size_b]" ExcludeView="simple">_size_b_()</Item>
+
+            <CustomListItems>
+                <Variable Name="offset" InitialValue="0"/>
+                <Variable Name="index" InitialValue="0"/>
+                <Variable Name="width" InitialValue="0"/>
+                <Variable Name="ch" InitialValue="0"/>
+                <Loop>
+                    <Break Condition="offset >= _size_b_() || offset >= 1000"/>
+                    <If Condition="(_data_()[offset] &amp; 0x80) == 0x00">
+                        <!-- 1 - 0xxxxxxx -->
+                        <Exec>width = 1</Exec>
+                        <Exec>ch = _data_()[offset]</Exec>
+                    </If>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xE0) == 0xC0">
+                        <!-- 2 - 110xxxxx 10xxxxxx -->
+                        <Exec>width = 2</Exec>
+                        <Exec>
+                            ch = ((_data_()[offset]     &amp; 0x1F) &lt;&lt; 6)
+                               |  (_data_()[offset + 1] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xF0) == 0xE0">
+                        <!-- 3 - 1110xxxx 10xxxxxx 10xxxxxx -->
+                        <Exec>width = 3</Exec>
+                        <Exec>
+                            ch = ((_data_()[offset]     &amp; 0x0F) &lt;&lt; 12)
+                               | ((_data_()[offset + 1] &amp; 0x3F) &lt;&lt; 6)
+                               |  (_data_()[offset + 2] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xF8) == 0xF0">
+                        <!-- 4 - 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx -->
+                        <Exec>width = 4</Exec>
+                        <Exec>
+                            ch = ((_data_()[offset]     &amp; 0x07) &lt;&lt; 18)
+                               | ((_data_()[offset + 1] &amp; 0x3F) &lt;&lt; 12)
+                               | ((_data_()[offset + 2] &amp; 0x3F) &lt;&lt; 6)
+                               |  (_data_()[offset + 3] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Elseif Condition="(_data_()[offset] &amp; 0xFC) == 0xF8">
+                        <!-- 5 - 111110xx 10xxxxxx 10xxxxxx 10xxxxxx 10xxxxxx -->
+                        <Exec>width = 5</Exec>
+                        <Exec>
+                            ch = ((_data_()[offset]     &amp; 0x03) &lt;&lt; 24)
+                               | ((_data_()[offset + 1] &amp; 0x3F) &lt;&lt; 18)
+                               | ((_data_()[offset + 2] &amp; 0x3F) &lt;&lt; 12)
+                               | ((_data_()[offset + 3] &amp; 0x3F) &lt;&lt; 6)
+                               |  (_data_()[offset + 4] &amp; 0x3F)
+                        </Exec>
+                    </Elseif>
+                    <Else>
+                        <Item>"[invalid_codepoint]"</Item>
+                        <Break/>
+                    </Else>
+                    <If Condition="offset + width > _size_b_()">
+                        <Item>"[unexpected_end]"</Item>
+                        <Break/>
+                    </If>
+                    <!-- The maximum value for a char item is 0xFFFF -->
+                    <If Condition="ch &gt; 0xFFFF">
+                        <Item Name="[{index}]   [{offset}]">ch,X</Item>
+                    </If>
+                    <Else>
+                        <!-- NOTE: Not checked for valid 10xxxxxx -->
+                        <Item Name="[{index}]   [{offset}]">ch,c</Item>
+                    </Else>
+                    <Exec>offset += width</Exec>
+                    <Exec>index += 1</Exec>
+                </Loop>
+            </CustomListItems>
+        </Expand>
+    </Type>
+</AutoVisualizer>
