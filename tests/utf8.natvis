@@ -1,27 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
-    <Type Name="tiny_utf8::basic_string&lt;char32_t,char8_t,*&gt;">
-        <AlternativeType Name="tiny_utf8::basic_string&lt;char32_t,char,*&gt;" />
-
-        <Intrinsic Name="_small_" Expression="!(t_sso.data_len &amp; 0x1)" />
-        <Intrinsic Name="_sizeof_" Expression="sizeof(void*) * 4" />
-        <Intrinsic Name="_size_b_" Expression="_small_()
-                   ? _sizeof_() - (t_sso.data_len &gt;&gt; 1) - 1
-                   : t_non_sso.data_len" />
-        <Intrinsic Name="_capacity_b_" Expression="_small_()
-                   ? _sizeof_() - 1
-                   : t_non_sso.buffer_size - 1" />
-        <Intrinsic Name="_data_" Expression="_small_() ? t_sso.data : t_non_sso.data" />
-        <DisplayString Condition="_small_()">{t_sso.data,s8}</DisplayString>
-        <DisplayString Condition="!_small_()">{t_non_sso.data,s8}</DisplayString>
-        <StringView Condition="_small_()">t_sso.data,s8</StringView>
-        <StringView Condition="!_small_()">t_non_sso.data,s8</StringView>
+    <Type Name="u8string">
+        <AlternativeType Name="std::basic_string&lt;char8_t,std::char_traits&lt;char8_t&gt;,std::allocator&lt;char8_t&gt;&gt;" />
+        <Intrinsic Name="_size_B_" Expression="_Mypair._Myval2._Mysize" />
+        <Intrinsic Name="_capacity_B_" Expression="_Mypair._Myval2._Myres" />
+        <Intrinsic Name="_is_sso_" Expression="_Mypair._Myval2._Myres &lt; 16" />
+        <Intrinsic Name="_data_" Expression="_is_sso_() ? _Mypair._Myval2._Bx._Buf : _Mypair._Myval2._Bx._Ptr" />
+        <DisplayString>{_data_(),s8}</DisplayString>
+        <StringView>_data_(),s8</StringView>
 
         <Expand>
-            <Item Name="[size_b]" ExcludeView="simple">_size_b_()</Item>
-            <Item Name="[length]" ExcludeView="simple">length()</Item>
-            <Item Name="[capacity_b]" ExcludeView="simple">_capacity_b_()</Item>
-            <Item Name="[SSO]" ExcludeView="simple">_small_()</Item>
+            <Item Name="[size_B]" ExcludeView="simple">_size_B_()</Item>
+            <Item Name="[capacity_B]" ExcludeView="simple">_capacity_B_()</Item>
+            <Item Name="[SSO]" ExcludeView="simple">_is_sso_()</Item>
 
             <CustomListItems>
                 <Variable Name="offset" InitialValue="0"/>
@@ -29,7 +20,7 @@
                 <Variable Name="width" InitialValue="0"/>
                 <Variable Name="ch" InitialValue="0"/>
                 <Loop>
-                    <Break Condition="offset >= _size_b_() || offset >= 1000"/>
+                    <Break Condition="offset >= _size_B_() || offset >= 1000"/>
                     <If Condition="(_data_()[offset] &amp; 0x80) == 0x00">
                         <!-- 1 - 0xxxxxxx -->
                         <Exec>width = 1</Exec>
@@ -73,7 +64,7 @@
                         <Item>"[invalid_codepoint]"</Item>
                         <Break/>
                     </Else>
-                    <If Condition="offset + width > _size_b_()">
+                    <If Condition="offset + width > _size_B_()">
                         <Item>"[unexpected_end]"</Item>
                         <Break/>
                     </If>
@@ -95,13 +86,13 @@
     <Type Name="std::basic_string_view&lt;char,*&gt;">
         <AlternativeType Name="std::basic_string_view&lt;char8_t,*&gt;" />
 
-        <Intrinsic Name="_size_b_" Expression="_Mysize" />
+        <Intrinsic Name="_size_B_" Expression="_Mysize" />
         <Intrinsic Name="_data_" Expression="_Mydata" />
         <DisplayString>{_data_(),s8}</DisplayString>
         <StringView>_data_(),s8</StringView>
 
         <Expand>
-            <Item Name="[size_b]" ExcludeView="simple">_size_b_()</Item>
+            <Item Name="[size_B]" ExcludeView="simple">_size_B_()</Item>
 
             <CustomListItems>
                 <Variable Name="offset" InitialValue="0"/>
@@ -109,7 +100,7 @@
                 <Variable Name="width" InitialValue="0"/>
                 <Variable Name="ch" InitialValue="0"/>
                 <Loop>
-                    <Break Condition="offset >= _size_b_() || offset >= 1000"/>
+                    <Break Condition="offset >= _size_B_() || offset >= 1000"/>
                     <If Condition="(_data_()[offset] &amp; 0x80) == 0x00">
                         <!-- 1 - 0xxxxxxx -->
                         <Exec>width = 1</Exec>
@@ -157,7 +148,7 @@
                         <Item>"[invalid_codepoint]"</Item>
                         <Break/>
                     </Else>
-                    <If Condition="offset + width > _size_b_()">
+                    <If Condition="offset + width > _size_B_()">
                         <Item>"[unexpected_end]"</Item>
                         <Break/>
                     </If>
@@ -177,13 +168,13 @@
     </Type>
 
     <Type Name="nonstd::sv_lite::basic_string_view&lt;char,*&gt;">
-        <Intrinsic Name="_size_b_" Expression="size_" />
+        <Intrinsic Name="_size_B_" Expression="size_" />
         <Intrinsic Name="_data_" Expression="data_" />
         <DisplayString>{_data_(),s8}</DisplayString>
         <StringView>_data_(),s8</StringView>
 
         <Expand>
-            <Item Name="[size_b]" ExcludeView="simple">_size_b_()</Item>
+            <Item Name="[size_B]" ExcludeView="simple">_size_B_()</Item>
 
             <CustomListItems>
                 <Variable Name="offset" InitialValue="0"/>
@@ -191,7 +182,7 @@
                 <Variable Name="width" InitialValue="0"/>
                 <Variable Name="ch" InitialValue="0"/>
                 <Loop>
-                    <Break Condition="offset >= _size_b_() || offset >= 1000"/>
+                    <Break Condition="offset >= _size_B_() || offset >= 1000"/>
                     <If Condition="(_data_()[offset] &amp; 0x80) == 0x00">
                         <!-- 1 - 0xxxxxxx -->
                         <Exec>width = 1</Exec>
@@ -239,7 +230,7 @@
                         <Item>"[invalid_codepoint]"</Item>
                         <Break/>
                     </Else>
-                    <If Condition="offset + width > _size_b_()">
+                    <If Condition="offset + width > _size_B_()">
                         <Item>"[unexpected_end]"</Item>
                         <Break/>
                     </If>

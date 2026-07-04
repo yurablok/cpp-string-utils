@@ -2,14 +2,30 @@
 # https://github.com/yurablok/cmake-cpp-template
 #
 # History:
-# v0.8  2024-May-01     Added flags `-fvisibility=hidden`, `MSVC_CPU_AUTO_LIMIT`.
-# v0.7  2023-Dec-27     Added `breakpad_dump_and_strip`.
-# v0.6  2023-May-22     Added `--filter=tree:0` and removed `--single-branch` in `fetch_git`.
-# v0.5  2023-Feb-22     Added `fetch_git`.
-# v0.4  2023-Feb-20     Added git commands.
-# v0.3  2023-Jan-24     Added `add_option`.
-# v0.2  2022-Dec-24     Added support for Windows ARM64.
-# v0.1  2022-Oct-18     First release.
+# v0.17  2026-Jun-11    Added explicit `-gdwarf-4` for GCC [4.7, 5.0).
+#                       Fixed `dump_syms_and_strip` for libs.
+# v0.16  2026-Apr-13    Expanded generating metainfo.
+# v0.15  2025-Dec-08    Fixed preserving the "sccsid" section when using MSVC.
+# v0.14  2025-Nov-17    Added `get_target_output_name`.
+# v0.13  2025-Jul-07    Changed `breakpad_dump_and_strip` to `dump_syms_and_strip`.
+#                       Changed `copy_release_binary_to_workdir` to `copy_release_binary`.
+# v0.12  2025-May-23    Added `CMAKE_CXX_STANDARD_AVAILABLE`.
+# v0.11  2025-Apr-21    Added ' ' prefix into target names in `launch.vs.json`.
+# v0.10  2024-Dec-27    Added `add_metainfo`.
+#                       Added `copy_release_binary_to_workdir` instead of
+#                         `copy_release_app_to_workdir` & `copy_release_lib_to_workdir`.
+# v0.9   2024-Sep-23    Added `recursive` parameter to `fetch_git`.
+# v0.8   2024-May-01    Added flags `-fvisibility=hidden`, `MSVC_CPU_AUTO_LIMIT`.
+# v0.7   2023-Dec-27    Added `breakpad_dump_and_strip`.
+# v0.6   2023-May-22    Added `--filter=tree:0` and removed `--single-branch` in `fetch_git`.
+# v0.5   2023-Feb-22    Added `fetch_git`.
+# v0.4   2023-Feb-20    Added git commands.
+# v0.3   2023-Jan-24    Added `add_option`.
+# v0.2   2022-Dec-24    Added support for Windows ARM64.
+# v0.1   2022-Oct-18    First release.
+if("${RUN}" STREQUAL "")
+    message("----- CMakeUtils v0.17 -----")
+endif()
 
 # Include this file before the main `project(...)`
 
@@ -34,9 +50,20 @@ function(init_project)
         message(FATAL_ERROR "At least one target must be specified.")
     endif()
 
+    # x86, i386, i486, i586, i686       => x32
+    # x86_64, AMD64, x86-64-S           => x64, x64v3, ...
+    # arm, armv5, armv6, armv7, armv7s,
+    #   armv7k, armhf                   => arm32, arm32v7, ...
+    # aarch64, arm64, arm64e, arm64_32  => arm64, arm64v8, arm64e, arm64_32, ...
+    # riscv32, RISCV32                  => rv32, rv32i, ...
+    # riscv64, RISCV64                  => rv64, rv64gc, rv64imafdc, ...
+    # ppc, powerpc                      => ppc32, ppc32be, ...
+    # ppc64, ppc64le                    => ppc64, ppc64le, ...
     if("${BUILD_ARCH}" STREQUAL "")
         if(NOT "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}" STREQUAL "")
             set(CMAKE_TARGET_ARCH ${CMAKE_CXX_COMPILER_ARCHITECTURE_ID})
+        elseif(NOT "${CMAKE_OSX_ARCHITECTURES}" STREQUAL "")
+            set(CMAKE_TARGET_ARCH ${CMAKE_OSX_ARCHITECTURES})
         else()
             set(CMAKE_TARGET_ARCH ${CMAKE_SYSTEM_PROCESSOR})
         endif()
@@ -46,6 +73,12 @@ function(init_project)
                 set(BUILD_ARCH "arm64")
             else()
                 set(BUILD_ARCH "arm32")
+            endif()
+        elseif("${CMAKE_TARGET_ARCH}" MATCHES "riscv.*")
+            if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+                set(BUILD_ARCH "rv64")
+            else()
+                set(BUILD_ARCH "rv32")
             endif()
         else()
             if(CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -82,6 +115,7 @@ function(init_project)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/${BUILD_FOLDER}" PARENT_SCOPE)
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/${BUILD_FOLDER}" PARENT_SCOPE)
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/${BUILD_FOLDER}" PARENT_SCOPE)
+    set(CMAKE_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/workdir" PARENT_SCOPE)
 
     file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/build/.cmake")
     file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/workdir")
@@ -99,9 +133,11 @@ function(init_project)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
     endif()
 
+    include(CheckCXXCompilerFlag)
     if(MSVC)
         if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
             message("Compiler: MSVC v${CMAKE_CXX_COMPILER_VERSION}")
+            set(BUILD_DIRECTORY "${CMAKE_SOURCE_DIR}/build/${BUILD_FOLDER}/${CMAKE_BUILD_TYPE}")
             if(MSVC_CPU_AUTO_LIMIT)
                 cmake_host_system_information(RESULT totalCPU QUERY NUMBER_OF_LOGICAL_CORES)
                 message("NUMBER_OF_LOGICAL_CORES=${totalCPU}")
@@ -124,9 +160,11 @@ function(init_project)
                 /sdl # Enable Additional Security Checks
                 "/MP ${maxCPU}" # Build with Multiple Processes
                 /permissive- # Standards conformance
+                /Zc:__cplusplus # Enable updated __cplusplus macro
             )
         else()
             message("Compiler: Clang v${CMAKE_CXX_COMPILER_VERSION}")
+            set(BUILD_DIRECTORY "${CMAKE_SOURCE_DIR}/build/${BUILD_FOLDER}")
             add_compile_options(-fcolor-diagnostics)
         endif()
 
@@ -147,6 +185,14 @@ function(init_project)
         set(CMAKE_C_FLAGS_RELWITHDEBINFO "/MD /Zi /O2 /Ob2 /DNDEBUG" PARENT_SCOPE)
         set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/MD /Zi /O2 /Ob2 /DNDEBUG" PARENT_SCOPE)
 
+        foreach(v 26 23 20 17 14 11)
+            check_cxx_compiler_flag("/std:c++${v}" IS_CXX${v}_SUPPORTED)
+            if(IS_CXX${v}_SUPPORTED)
+                set(CMAKE_CXX_STANDARD_AVAILABLE ${v} PARENT_SCOPE)
+                break()
+            endif()
+        endforeach()
+
         #NOTE: When changing the Qt5_DIR, you may need to manually delete CMakeCache.txt
         __find_msvc_qt5("C;D;E" "5.15.2")
         __write_msvs_launch_vs_json("${arg_UNPARSED_ARGUMENTS}")
@@ -165,11 +211,17 @@ function(init_project)
         set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g1 -DNDEBUG" PARENT_SCOPE)
         set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g1 -DNDEBUG" PARENT_SCOPE)
 
+        set(BUILD_DIRECTORY "${CMAKE_SOURCE_DIR}/build/${BUILD_FOLDER}")
         add_compile_options(-fvisibility=hidden)
 
         if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
             message("Compiler: GCC v${CMAKE_CXX_COMPILER_VERSION}")
             add_compile_options(-fdiagnostics-color=always)
+            if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.7
+                    AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0)
+                set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g1 -gdwarf-4 -DNDEBUG" PARENT_SCOPE)
+                set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g1 -gdwarf-4 -DNDEBUG" PARENT_SCOPE)
+            endif()
             if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
                 add_link_options(-fuse-ld=gold)
             elseif(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12.1)
@@ -182,6 +234,14 @@ function(init_project)
             message("Compiler: Clang v${CMAKE_CXX_COMPILER_VERSION}")
             add_compile_options(-fcolor-diagnostics)
         endif()
+
+        foreach(v 26 23 20 17 14 11)
+            check_cxx_compiler_flag("-std=c++${v}" IS_CXX${v}_SUPPORTED)
+            if(IS_CXX${v}_SUPPORTED)
+                set(CMAKE_CXX_STANDARD_AVAILABLE ${v} PARENT_SCOPE)
+                break()
+            endif()
+        endforeach()
 
         __find_gcc_qt5("5.15.2")
 
@@ -207,7 +267,7 @@ function(init_project)
     set(CMAKE_C_STANDARD_REQUIRED OFF PARENT_SCOPE)
     set(CMAKE_C_EXTENSIONS OFF PARENT_SCOPE)
     set(CMAKE_INCLUDE_CURRENT_DIR ON PARENT_SCOPE)
-    
+
     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         set(Qt5Path "${Qt5x64Path}" PARENT_SCOPE)
     else()
@@ -221,6 +281,7 @@ function(init_project)
     set(BUILD_TYPE "${BUILD_TYPE}" PARENT_SCOPE)
     set(BUILD_PLATFORM "${BUILD_PLATFORM}" PARENT_SCOPE)
     set(BUILD_FOLDER "${BUILD_FOLDER}" PARENT_SCOPE)
+    set(BUILD_DIRECTORY "${BUILD_DIRECTORY}" PARENT_SCOPE)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ${CMAKE_INTERPROCEDURAL_OPTIMIZATION} PARENT_SCOPE)
 endfunction(init_project)
 
@@ -399,6 +460,275 @@ function(add_option)
 endfunction(add_option)
 
 
+#  █████  ██████  ██████      ███    ███ ███████ ████████  █████  ██ ███    ██ ███████  ██████
+# ██   ██ ██   ██ ██   ██     ████  ████ ██         ██    ██   ██ ██ ████   ██ ██      ██    ██
+# ███████ ██   ██ ██   ██     ██ ████ ██ █████      ██    ███████ ██ ██ ██  ██ █████   ██    ██
+# ██   ██ ██   ██ ██   ██     ██  ██  ██ ██         ██    ██   ██ ██ ██  ██ ██ ██      ██    ██
+# ██   ██ ██████  ██████      ██      ██ ███████    ██    ██   ██ ██ ██   ████ ██       ██████
+#
+# @param targetName               EXECUTABLE or SHARED_LIBRARY target
+# @param VERSION                  1.2.3.4-alpha5
+# @param DESCRIPTION  (optional)  "Application Template"
+# @param PRODUCT      (optional)  "CMake C++ Template"
+# @param COMPANY      (optional)  "HOME Co."
+# @param COPYRIGHT    (optional)  "© 2007-2024 HOME Co. All rights reserved."
+# @param ICON         (optional)  "icon" (without the extension) => Windows: .ico, MacOS: .icns
+function(add_metainfo targetName)
+    cmake_parse_arguments(arg "" "VERSION;DESCRIPTION;COMPANY;PRODUCT;COPYRIGHT;ICON" "" "${ARGN}")
+
+    string(REGEX MATCH "([0-9]+)\\.?([0-9]+)?\\.?([0-9]+)?\\.?([0-9]+)?-?([-0-9a-zA-Z]+)?" result ${arg_VERSION})
+    if("${CMAKE_MATCH_1}" STREQUAL "")
+        set(CMAKE_MATCH_1 "0")
+    endif()
+    if("${CMAKE_MATCH_2}" STREQUAL "")
+        set(CMAKE_MATCH_2 "0")
+    endif()
+    if("${CMAKE_MATCH_3}" STREQUAL "")
+        set(CMAKE_MATCH_3 "0")
+    endif()
+    if("${CMAKE_MATCH_4}" STREQUAL "")
+        set(CMAKE_MATCH_4 "0")
+    endif()
+
+    get_target_property(targetType ${targetName} TYPE)
+    if("${targetType}" STREQUAL "EXECUTABLE")
+    elseif("${targetType}" STREQUAL "SHARED_LIBRARY")
+        if(NOT "${arg_ICON}" STREQUAL "")
+            message(FATAL_ERROR "add_metainfo: ${targetName} is a library and can't has an icon")
+        endif()
+    else()
+        message(FATAL_ERROR "add_metainfo: ${targetName} must be EXECUTABLE or SHARED_LIBRARY")
+    endif()
+
+    get_target_property(targetSources ${targetName} SOURCES)
+    if("${targetSources}" STREQUAL "")
+        message(FATAL_ERROR "add_metainfo: use it after specifying sources for ${targetName}")
+    endif()
+
+    set(cPath "${CMAKE_CURRENT_BINARY_DIR}/${targetName}.metainfo.c")
+    set(c
+"#include \"${targetName}.metainfo.h\"
+
+#if defined(__unix__)
+  __attribute__((used, section(\".sccsid\")))
+#else
+# pragma section(\"sccsid\", read)
+# if defined(__cplusplus)
+    extern \"C\"
+# else
+    extern
+# endif
+__declspec(allocate(\"sccsid\"))
+#endif
+// Source Code Control System (SCCS) convention
+// grep --binary-files=text \"@(#)\" application
+// readelf -p .sccsid {application}
+volatile const char sccsid[] = \"\\n\\n\"
+    \"@(#) Version: v${arg_VERSION} ${BUILD_ARCH}\\n\"
+    \"@(#) Description: ${arg_DESCRIPTION}\\n\"
+    \"@(#) Product Name: ${arg_PRODUCT}\\n\"
+    \"@(#) Company Name: ${arg_COMPANY}\\n\"
+    \"@(#) Copyright: ${arg_COPYRIGHT}\\n\"
+    \"\\n\"
+    \"$Id: v${arg_VERSION} ${BUILD_ARCH}; ${arg_DESCRIPTION}; ${arg_PRODUCT};\"
+    \" ${arg_COMPANY}; ${arg_COPYRIGHT} $\\n\"
+\"\\n\";
+static volatile const void* sccsid_anchor = sccsid;
+
+#if defined(__unix__)
+// readelf -p .note.version {application}
+// readelf -p .note.version -p .note.description -p .note.product -p .note.company -p .note.copyright application
+// readelf -n {application}
+#   define ADD_NOTE(TOKEN, NAME, TEXT) \\
+        struct note_##TOKEN { \\
+            uint32_t namesz; \\
+            uint32_t descsz; \\
+            uint32_t type; \\
+            char name[sizeof(NAME)]; \\
+            char desc[sizeof(TEXT)]; \\
+        }; \\
+        __attribute__((used, section(\".note.\" #TOKEN), aligned(4))) \\
+        const struct note_##TOKEN g_##TOKEN = { \\
+            .namesz = sizeof(NAME), \\
+            .descsz = sizeof(TEXT), \\
+            .type = 1, \\
+            .name = NAME, \\
+            .desc = TEXT \\
+        }
+    ADD_NOTE(version,     \"${arg_VERSION}\", \"${arg_VERSION} ${BUILD_ARCH}\");
+    ADD_NOTE(description, \"description\",    \"${arg_DESCRIPTION}\");
+    ADD_NOTE(product,     \"product\",        \"${arg_PRODUCT}\");
+    ADD_NOTE(company,     \"company\",        \"${arg_COMPANY}\");
+    ADD_NOTE(copyright,   \"copyright\",      \"${arg_COPYRIGHT}\");
+#endif
+
+const char* ${targetName}_Architecture() {
+    return \"${BUILD_ARCH}\";
+}
+const char* ${targetName}_Description() {
+    return \"${arg_DESCRIPTION}\";
+}
+const char* ${targetName}_Product() {
+    return \"${arg_PRODUCT}\";
+}
+const char* ${targetName}_Company() {
+    return \"${arg_COMPANY}\";
+}
+const char* ${targetName}_Copyright() {
+    return \"${arg_COPYRIGHT}\";
+}
+const char* ${targetName}_Version() {
+    (void)sccsid_anchor;
+    return \"${arg_VERSION}\";
+}
+uint16_t ${targetName}_VersionMajor() {
+    return ${CMAKE_MATCH_1};
+}
+uint16_t ${targetName}_VersionMinor() {
+    return ${CMAKE_MATCH_2};
+}
+uint16_t ${targetName}_VersionPatch() {
+    return ${CMAKE_MATCH_3};
+}
+uint16_t ${targetName}_VersionBuild() {
+    return ${CMAKE_MATCH_4};
+}
+const char* ${targetName}_VersionQualifier() {
+    return \"${CMAKE_MATCH_5}\";
+}
+")
+    set(hPath "${CMAKE_CURRENT_BINARY_DIR}/${targetName}.metainfo.h")
+    set(h
+"#pragma once
+#include <stdint.h>
+
+#if defined(__cplusplus)
+extern \"C\" {
+#endif
+
+const char* ${targetName}_Architecture();
+const char* ${targetName}_Description();
+const char* ${targetName}_Product();
+const char* ${targetName}_Company();
+const char* ${targetName}_Copyright();
+const char* ${targetName}_Version();
+uint16_t ${targetName}_VersionMajor();
+uint16_t ${targetName}_VersionMinor();
+uint16_t ${targetName}_VersionPatch();
+uint16_t ${targetName}_VersionBuild();
+const char* ${targetName}_VersionQualifier();
+")
+
+    if(${CMAKE_MATCH_1} LESS_EQUAL 0xFF AND ${CMAKE_MATCH_2} LESS_EQUAL 0xFF
+            AND ${CMAKE_MATCH_3} LESS_EQUAL 0xFF AND ${CMAKE_MATCH_4} LESS_EQUAL 0xFF)
+        set(h
+"${h}uint32_t ${targetName}_VersionU32();
+")
+        set(c
+"${c}uint32_t ${targetName}_VersionU32() {
+    return (UINT32_C(${CMAKE_MATCH_1}) << 24) | (UINT32_C(${CMAKE_MATCH_2}) << 16) | (UINT32_C(${CMAKE_MATCH_3}) << 8) | (UINT32_C(${CMAKE_MATCH_4}));
+}
+")
+    endif()
+    if(${CMAKE_MATCH_1} LESS_EQUAL 0xFFFF AND ${CMAKE_MATCH_2} LESS_EQUAL 0xFFFF
+            AND ${CMAKE_MATCH_3} LESS_EQUAL 0xFFFF AND ${CMAKE_MATCH_4} LESS_EQUAL 0xFFFF)
+        set(h
+"${h}uint64_t ${targetName}_VersionU64();
+")
+        set(c
+"${c}uint64_t ${targetName}_VersionU64() {
+    return (UINT64_C(${CMAKE_MATCH_1}) << 48) | (UINT64_C(${CMAKE_MATCH_2}) << 32) | (UINT64_C(${CMAKE_MATCH_3}) << 16) | (UINT64_C(${CMAKE_MATCH_4}));
+}
+")
+    endif()
+    set(h "${h}
+#if defined(__cplusplus)
+} // extern \"C\"
+#endif
+")
+
+    string(SHA256 verHash "${c}|${arg_ICON}")
+    if("${${targetName}_verHashCached}" STREQUAL ${verHash})
+        set(isChanged NO)
+    else()
+        set(${targetName}_verHashCached ${verHash} CACHE INTERNAL "")
+        set(isChanged YES)
+    endif()
+
+    if(isChanged)
+        file(WRITE "${hPath}" "${h}")
+        file(WRITE "${cPath}" "${c}")
+        message("Generated ${targetName}.metainfo.h & c")
+    endif()
+
+    target_include_directories(${targetName} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    list(APPEND targetSources "${hPath}" "${cPath}")
+
+    if(WIN32)
+        get_target_output_name(${targetName} targetOutputName "")
+        if(NOT "${arg_ICON}" STREQUAL "")
+            set(icon "\nIDI_ICON1 ICON DISCARDABLE \"${arg_ICON}.ico\"\n")
+        endif()
+        set(rcPath "${CMAKE_CURRENT_BINARY_DIR}/${targetName}.metainfo.rc")
+        set(rc
+"#include <windows.h>
+${icon}
+VS_VERSION_INFO VERSIONINFO
+    FILEVERSION ${CMAKE_MATCH_1},${CMAKE_MATCH_2},${CMAKE_MATCH_3},${CMAKE_MATCH_4}
+    FILEFLAGSMASK 0xFFL
+# ifdef NDEBUG
+    FILEFLAGS 0
+# else
+    FILEFLAGS VS_FF_DEBUG
+# endif
+BEGIN
+    BLOCK \"StringFileInfo\"
+    BEGIN
+        BLOCK \"000004B0\"
+        BEGIN
+            VALUE \"FileDescription\", \"${arg_DESCRIPTION}\\0\"
+            VALUE \"ProductName\", \"${arg_PRODUCT}\\0\"
+            VALUE \"ProductVersion\", \"${arg_VERSION} ${BUILD_ARCH}\\0\"
+            VALUE \"CompanyName\", \"${arg_COMPANY}\\0\"
+            VALUE \"LegalCopyright\", \"${arg_COPYRIGHT}\\0\"
+            VALUE \"OriginalFilename\", \"${targetOutputName}\\0\"
+        END
+    END
+    BLOCK \"VarFileInfo\"
+    BEGIN
+        VALUE \"Translation\", 0x0000, 0x04B0
+    END
+END
+")
+        if(isChanged)
+            # ClangCL: UTF-16 (LE) byte order mark detected in '***.rc', but encoding is not supported
+            if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+                file(WRITE "${rcPath}" "${rc}")
+                message(WARNING "ClangCL supports only ASCII .rc")
+            else()
+                file(WRITE "${rcPath}.utf8" "${rc}")
+                execute_process(
+                    COMMAND powershell
+                        Get-Content '${targetName}.metainfo.rc.utf8' -Raw -Encoding utf8
+                        | Out-File '${targetName}.metainfo.rc' -Encoding unicode
+                    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+                )
+            endif()
+            message("Generated ${targetName}.metainfo.rc")
+        endif()
+        list(APPEND targetSources "${rcPath}")
+    elseif(APPLE)
+        #TODO: Generate Info.plist
+        if(NOT "${arg_ICON}" STREQUAL "")
+            set(iconPath "${arg_ICON}.icns")
+            set_source_files_properties(${iconPath} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+            list(APPEND targetSources "${iconPath}")
+        endif()
+    endif()
+    target_sources(${targetName} PRIVATE "${targetSources}")
+endfunction(add_metainfo)
+
+
 #   ██████  ██ ████████     ██    ██ ████████ ██ ██      ██ ████████ ███████ ███████
 #  ██       ██    ██        ██    ██    ██    ██ ██      ██    ██    ██      ██
 #  ██   ███ ██    ██        ██    ██    ██    ██ ██      ██    ██    █████   ███████
@@ -408,10 +738,17 @@ endfunction(add_option)
 # @param directory  Target directory to download sources.
 # @param address    Git-compatible address of a repository.
 # @param tag        Desired branch | tag | hash.
-function(fetch_git directory address tag)
+# @param recursive  YES/NO to fetch recursively.
+function(fetch_git directory address tag recursive)
     get_filename_component(absolutePath ${directory} ABSOLUTE)
     file(RELATIVE_PATH relativePath ${CMAKE_SOURCE_DIR} ${absolutePath})
     message("fetch_git: checking \"${relativePath}\"...")
+
+    if(recursive)
+        set(recursive "--recurse-submodules")
+    else()
+        set(recursive "")
+    endif()
 
     if(NOT EXISTS "${absolutePath}/.git/HEAD")
         message("fetch_git: downloading \"${relativePath}\"...")
@@ -425,7 +762,7 @@ function(fetch_git directory address tag)
 
         execute_process(
             WORKING_DIRECTORY ${absoluteParentPath}
-            COMMAND git clone --branch ${tag} --filter=tree:0 --recurse-submodules ${address} ${folder}
+            COMMAND git clone --branch ${tag} --filter=tree:0 ${recursive} ${address} ${folder}
             OUTPUT_VARIABLE output
             ERROR_VARIABLE error
             RESULT_VARIABLE result
@@ -454,7 +791,7 @@ function(fetch_git directory address tag)
             if(${result} GREATER 0)
                 execute_process(
                     WORKING_DIRECTORY ${absoluteParentPath}
-                    COMMAND git clone --filter=tree:0 --recurse-submodules ${address} ${folder}
+                    COMMAND git clone --filter=tree:0 ${recursive} ${address} ${folder}
                     OUTPUT_VARIABLE output
                     ERROR_VARIABLE error
                     RESULT_VARIABLE result
@@ -465,7 +802,7 @@ function(fetch_git directory address tag)
 
                 execute_process(
                     WORKING_DIRECTORY ${absolutePath}
-                    COMMAND git checkout --recurse-submodules ${tag}
+                    COMMAND git checkout ${recursive} ${tag}
                     OUTPUT_VARIABLE output
                     ERROR_VARIABLE error
                     RESULT_VARIABLE result
@@ -489,7 +826,7 @@ function(fetch_git directory address tag)
     else()
         execute_process(
             WORKING_DIRECTORY ${absolutePath}
-            COMMAND git checkout --recurse-submodules ${tag}
+            COMMAND git checkout ${recursive} ${tag}
             OUTPUT_VARIABLE output
             ERROR_VARIABLE error
             RESULT_VARIABLE result
@@ -504,7 +841,7 @@ function(fetch_git directory address tag)
 
             execute_process(
                 WORKING_DIRECTORY ${absolutePath}
-                COMMAND git fetch --all --tags --recurse-submodules
+                COMMAND git fetch --all --tags ${recursive}
                 OUTPUT_VARIABLE output
                 ERROR_VARIABLE error
                 RESULT_VARIABLE result
@@ -515,7 +852,7 @@ function(fetch_git directory address tag)
 
             execute_process(
                 WORKING_DIRECTORY ${absolutePath}
-                COMMAND git checkout --recurse-submodules --force ${tag}
+                COMMAND git checkout ${recursive} --force ${tag}
                 OUTPUT_VARIABLE output
                 ERROR_VARIABLE error
                 RESULT_VARIABLE result
@@ -727,87 +1064,159 @@ function(__find_msvc_qt5 drives qtVersion)
 endfunction(__find_msvc_qt5)
 
 
-#  ██████  ██████  ███████  █████  ██   ██ ██████   █████  ██████      ██    ██ ████████ ██ ██      ██ ████████ ███████ ███████ 
-#  ██   ██ ██   ██ ██      ██   ██ ██  ██  ██   ██ ██   ██ ██   ██     ██    ██    ██    ██ ██      ██    ██    ██      ██      
-#  ██████  ██████  █████   ███████ █████   ██████  ███████ ██   ██     ██    ██    ██    ██ ██      ██    ██    █████   ███████ 
-#  ██   ██ ██   ██ ██      ██   ██ ██  ██  ██      ██   ██ ██   ██     ██    ██    ██    ██ ██      ██    ██    ██           ██ 
-#  ██████  ██   ██ ███████ ██   ██ ██   ██ ██      ██   ██ ██████       ██████     ██    ██ ███████ ██    ██    ███████ ███████ 
+#  ██████   █████   ██████ ██   ██ ████████ ██████   █████   ██████ ███████     ██    ██ ████████ ██ ██      ██ ████████ ███████ ███████ 
+#  ██   ██ ██   ██ ██      ██  ██     ██    ██   ██ ██   ██ ██      ██          ██    ██    ██    ██ ██      ██    ██    ██      ██      
+#  ██████  ███████ ██      █████      ██    ██████  ███████ ██      █████       ██    ██    ██    ██ ██      ██    ██    █████   ███████ 
+#  ██   ██ ██   ██ ██      ██  ██     ██    ██   ██ ██   ██ ██      ██          ██    ██    ██    ██ ██      ██    ██    ██           ██ 
+#  ██████  ██   ██  ██████ ██   ██    ██    ██   ██ ██   ██  ██████ ███████      ██████     ██    ██ ███████ ██    ██    ███████ ███████ 
 
-# @param targetName             Target name for which the symbols will be dumped
-# @param BREAKPAD_DUMP_SYMS     Path to the Breakpad's dump_syms executable.
-# @param CMAKE_STRIP (optional) Path to the strip executable if the target platform is different.
-function(breakpad_dump_and_strip targetName)
+# @param targetName                     Target name for which the symbols will be dumped.
+# @param toPath             (optional)  "workdir/{to/Path}.sym|pdb.zip"
+#        -/-                "WORKDIR":  "workdir/bin_{arch}/{fileName}.sym|pdb.zip"
+#        -/-                  default:  "build/{type}/{fileName}.sym|pdb.zip"
+# @global BREAKPAD_DUMP_SYMS     (ELF)  Path to the Breakpad's dump_syms executable.
+# @global CMAKE_STRIP  (ELF, optional)  Path to the strip executable if the target platform is different.
+function(dump_syms_and_strip targetName) # toPath
+    set(argIdx -1)
+    foreach(arg ${ARGN})
+        math(EXPR argIdx "${argIdx}+1")
+        if(${argIdx} EQUAL 0)
+            set(toPath "${arg}")
+        else()
+            message(FATAL_ERROR "dump_syms_and_strip: wrong aguments number for \"${targetName}\"")
+        endif()
+    endforeach()
+
+    get_target_property(targetType ${targetName} TYPE)
+    if(NOT "${targetType}" MATCHES "(EXECUTABLE|SHARED_LIBRARY)")
+        message(FATAL_ERROR "dump_syms_and_strip: \"${targetName}\" must be EXECUTABLE or SHARED_LIBRARY")
+    endif()
+    get_target_property(wasTheCopyBefore ${targetName} copy_release_binary)
+    if(wasTheCopyBefore)
+        message(WARNING "dump_syms_and_strip: called after copy_release_binary")
+    endif()
+
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
         return()
     endif()
-    if(NOT TARGET ${targetName})
-        message(FATAL_ERROR "breakpad_dump_and_strip: wrong target ${targetName}")
-    endif()
-    if(${BUILD_PLATFORM} STREQUAL "Windows")
-        return()
-    elseif(NOT ${BUILD_PLATFORM} STREQUAL "Linux")
-        message(WARNING "breakpad_dump_and_strip: ${BUILD_PLATFORM} platform has not been tested")
-        return()
-    endif()
-    if("${BREAKPAD_DUMP_SYMS}" STREQUAL "")
-        message(WARNING "breakpad_dump_and_strip: BREAKPAD_DUMP_SYMS is not specified")
-        return()
-    endif()
-    if(NOT EXISTS "${BREAKPAD_DUMP_SYMS}")
-        message(FATAL_ERROR "breakpad_dump_and_strip: dump_syms is not found (path: ${BREAKPAD_DUMP_SYMS})")
+
+    get_target_output_name(${targetName} fileName fileExt)
+    if("${toPath}" STREQUAL "WORKDIR")
+        set(toPath "${CMAKE_SOURCE_DIR}/workdir/bin_${BUILD_ARCH}/${fileName}")
+    elseif("${toPath}" STREQUAL "")
+        set(toPath "${fileName}")
+    else()
+        set(toPath "${CMAKE_SOURCE_DIR}/workdir/${toPath}")
     endif()
 
-    add_custom_command(
-        VERBATIM
-        TARGET ${targetName} POST_BUILD
-        WORKING_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
-        COMMAND ${CMAKE_COMMAND}
-            -DRUN=breakpad_dump_and_strip
-    
-            -DBREAKPAD_DUMP_SYMS=${BREAKPAD_DUMP_SYMS}
-            -DCMAKE_STRIP=${CMAKE_STRIP}
-            -DTARGET_FILE=${targetName}
-    
-            -P ${CMAKE_SOURCE_DIR}/CMakeUtils.cmake
+    if(${BUILD_PLATFORM} STREQUAL "Windows")
+        if(NOT "${BREAKPAD_DUMP_SYMS}" STREQUAL "")
+            message(WARNING "dump_syms_and_strip: BREAKPAD_DUMP_SYMS is specified but not needed on Windows")
+        endif()
+
+        cmake_minimum_required(VERSION 3.18)
+        add_custom_command(
+            VERBATIM
+            TARGET ${targetName} POST_BUILD
+            WORKING_DIRECTORY "${BUILD_DIRECTORY}"
+            COMMAND ${CMAKE_COMMAND}
+                -DRUN=windows_pdb_zip
+
+                -DPDB_FILE=${BUILD_DIRECTORY}/${fileName}.pdb
+                -DTARGET_FILE_NAME=${fileName}
+                -DTO_PATH=${toPath}
+
+                -P ${CMAKE_SOURCE_DIR}/CMakeUtils.cmake
+        )
+    elseif(${BUILD_PLATFORM} STREQUAL "Linux")
+        if("${BREAKPAD_DUMP_SYMS}" STREQUAL "")
+            if(EXISTS "${BUILD_DIRECTORY}/breakpad_dump_syms")
+                set(BREAKPAD_DUMP_SYMS "${BUILD_DIRECTORY}/breakpad_dump_syms")
+            elseif(EXISTS "${BUILD_DIRECTORY}/dump_syms")
+                set(BREAKPAD_DUMP_SYMS "${BUILD_DIRECTORY}/dump_syms")
+            else()
+                message(WARNING "dump_syms_and_strip: BREAKPAD_DUMP_SYMS is not specified")
+                return()
+            endif()
+        endif()
+        if(NOT EXISTS "${BREAKPAD_DUMP_SYMS}")
+            message(FATAL_ERROR "dump_syms_and_strip: dump_syms is not found (path: ${BREAKPAD_DUMP_SYMS})")
+        endif()
+
+        cmake_minimum_required(VERSION 3.18)
+        add_custom_command(
+            VERBATIM
+            TARGET ${targetName} POST_BUILD
+            WORKING_DIRECTORY "${BUILD_DIRECTORY}"
+            COMMAND ${CMAKE_COMMAND}
+                -DRUN=breakpad_dump_and_strip
+
+                -DBREAKPAD_DUMP_SYMS=${BREAKPAD_DUMP_SYMS}
+                -DCMAKE_STRIP=${CMAKE_STRIP}
+                -DTARGET_FILE_NAME=${fileName}
+                -DTARGET_FILE_EXT=${fileExt}
+                -DTO_PATH=${toPath}
+
+                -P ${CMAKE_SOURCE_DIR}/CMakeUtils.cmake
+        )
+    else()
+        message(WARNING "dump_syms_and_strip: ${BUILD_PLATFORM} platform has not been tested")
+    endif()
+endfunction(dump_syms_and_strip)
+
+function(__windows_pdb_zip)
+    cmake_minimum_required(VERSION 3.18)
+    if(NOT EXISTS "${PDB_FILE}")
+        message(FATAL_ERROR "dump_syms_and_strip: pdb is not found (path: ${PDB_FILE})")
+    endif()
+    file(ARCHIVE_CREATE
+        OUTPUT "${TO_PATH}.pdb.zip"
+        PATHS "${PDB_FILE}"
+        FORMAT zip
     )
-endfunction(breakpad_dump_and_strip)
+    message("${TARGET_FILE_NAME}.pdb.zip created")
+endfunction(__windows_pdb_zip)
 
 function(__breakpad_dump_and_strip)
     execute_process(
-        COMMAND "${BREAKPAD_DUMP_SYMS}" -i ${TARGET_FILE}
+        COMMAND "${BREAKPAD_DUMP_SYMS}" -i "${TARGET_FILE_NAME}${TARGET_FILE_EXT}"
         OUTPUT_VARIABLE result
     )
-    # "MODULE Linux arm64 912C385C93DFB00C2B4D31F83BFF5BF90 TARGET_FILE"
-    string(REGEX MATCH "MODULE[ ]+[a-zA-Z0-9]+[ ]+[a-zA-Z0-9]+[ ]+([a-zA-Z0-9]+)[ ]+" result ${result})
+    # "MODULE Linux arm64 912C385C93DFB00C2B4D31F83BFF5BF90 TARGET_FILE_NAME"
+    string(REGEX MATCH "MODULE[ ]+[_a-zA-Z0-9]+[ ]+[_a-zA-Z0-9]+[ ]+([a-zA-Z0-9]+)[ ]+" matched "${result}")
     set(buildId "${CMAKE_MATCH_1}")
-    message("${TARGET_FILE} build id: ${buildId}")
-    file(MAKE_DIRECTORY "symbols/${TARGET_FILE}/${buildId}/")
+    if("${buildId}" STREQUAL "")
+        message(FATAL_ERROR "dump_syms_and_strip: can't get the build id from \"${result}\"\n"
+            "${BREAKPAD_DUMP_SYMS} -i ${TARGET_FILE_NAME}${TARGET_FILE_EXT}")
+    endif()
+    message("${TARGET_FILE_NAME}${TARGET_FILE_EXT} build id: ${buildId}")
+    file(MAKE_DIRECTORY "symbols/${TARGET_FILE_NAME}${TARGET_FILE_EXT}/${buildId}/")
 
     execute_process(
-        COMMAND "${BREAKPAD_DUMP_SYMS}" ${TARGET_FILE}
+        COMMAND "${BREAKPAD_DUMP_SYMS}" "${TARGET_FILE_NAME}${TARGET_FILE_EXT}"
         OUTPUT_VARIABLE result
     )
-    file(WRITE "symbols/${TARGET_FILE}/${buildId}/${TARGET_FILE}.sym" "${result}")
+    file(WRITE "symbols/${TARGET_FILE_NAME}${TARGET_FILE_EXT}/${buildId}/${TARGET_FILE_NAME}${TARGET_FILE_EXT}.sym" "${result}")
 
     cmake_minimum_required(VERSION 3.18)
     file(ARCHIVE_CREATE
-        OUTPUT "${TARGET_FILE}.sym.zip"
-        PATHS "symbols/${TARGET_FILE}/${buildId}/${TARGET_FILE}.sym"
+        OUTPUT "${TO_PATH}.sym.zip"
+        PATHS "symbols/${TARGET_FILE_NAME}${TARGET_FILE_EXT}/${buildId}/${TARGET_FILE_NAME}${TARGET_FILE_EXT}.sym"
         FORMAT zip
     )
     file(REMOVE_RECURSE "symbols")
 
     if("${CMAKE_STRIP}" STREQUAL "")
         execute_process(
-            COMMAND strip ${TARGET_FILE}
+            COMMAND strip "${TARGET_FILE_NAME}${TARGET_FILE_EXT}"
         )
     else()
         execute_process(
-            COMMAND "${CMAKE_STRIP}" ${TARGET_FILE}
+            COMMAND "${CMAKE_STRIP}" "${TARGET_FILE_NAME}${TARGET_FILE_EXT}"
         )
     endif()
 
-    message("${TARGET_FILE}.sym.zip created")
+    message("${TARGET_FILE_NAME}.sym.zip created")
 endfunction(__breakpad_dump_and_strip)
 
 
@@ -832,7 +1241,7 @@ function(__write_msvs_launch_vs_json targets)
         set(json "${json}      \"type\": \"default\",\n")
         set(json "${json}      \"project\": \"CMakeLists.txt\",\n")
         set(json "${json}      \"projectTarget\": \"${targetName}.exe (${targetPath}.exe)\",\n")
-        set(json "${json}      \"name\": \"${targetName}\",\n")
+        set(json "${json}      \"name\": \" ${targetName}\",\n") # ' ' for placing targets at the top
         set(json "${json}      \"args\": [\n")
         set(json "${json}        \"${targetArgs}\"\n")
         set(json "${json}      ],\n")
@@ -854,15 +1263,21 @@ function(__write_msvs_launch_vs_json targets)
         string(REPLACE "\"" "\\\\\"" targetArgs "${targetArgs}")
         #message("targetName=${targetName} targetArgs=[${targetArgs}]")
 
-        add("x32-Debug-Windows/Debug"              "${Qt5x32Path}" "${targetName}" "${targetArgs}")
-        add("x32-Release-Windows/RelWithDebInfo"   "${Qt5x32Path}" "${targetName}" "${targetArgs}")
-        add("x32-RelNoDebInfo-Windows/Release"     "${Qt5x32Path}" "${targetName}" "${targetArgs}")
         add("x64-Debug-Windows/Debug"              "${Qt5x64Path}" "${targetName}" "${targetArgs}")
-        add("x64-Release-Windows/RelWithDebInfo"   "${Qt5x64Path}" "${targetName}" "${targetArgs}")
-        add("x64-RelNoDebInfo-Windows/Release"     "${Qt5x64Path}" "${targetName}" "${targetArgs}")
         add("arm64-Debug-Windows/Debug"            "${Qt5x64Path}" "${targetName}" "${targetArgs}")
+        add("x32-Debug-Windows/Debug"              "${Qt5x32Path}" "${targetName}" "${targetArgs}")
+
+        add("x64-Release-Windows/RelWithDebInfo"   "${Qt5x64Path}" "${targetName}" "${targetArgs}")
         add("arm64-Release-Windows/RelWithDebInfo" "${Qt5x64Path}" "${targetName}" "${targetArgs}")
-        add("arm64-RelNoDebInfo-Windows/Release"   "${Qt5x64Path}" "${targetName}" "${targetArgs}")
+        add("x32-Release-Windows/RelWithDebInfo"   "${Qt5x32Path}" "${targetName}" "${targetArgs}")
+
+        add("x64-Debug-Windows"                    "${Qt5x64Path}" "${targetName}" "${targetArgs}")
+        add("arm64-Debug-Windows"                  "${Qt5x64Path}" "${targetName}" "${targetArgs}")
+        add("x32-Debug-Windows"                    "${Qt5x32Path}" "${targetName}" "${targetArgs}")
+
+        add("x64-Release-Windows"                  "${Qt5x64Path}" "${targetName}" "${targetArgs}")
+        add("arm64-Release-Windows"                "${Qt5x64Path}" "${targetName}" "${targetArgs}")
+        add("x32-Release-Windows"                  "${Qt5x32Path}" "${targetName}" "${targetArgs}")
     endforeach()
 
     set(json "${json}  ]\n")
@@ -901,40 +1316,81 @@ function(__crutch_for_msvs_bug_with_merges)
 endfunction(__crutch_for_msvs_bug_with_merges)
 
 
-function(copy_release_file_to_workdir frompath topath)
+# param      targetName             Target name.
+# param[out] targetOutputName       Target output file name without an extension.
+# param[out] targetOutputExtension  Target output file extension ("", ".so", ".exe", ".dll", ...).
+function(get_target_output_name targetName targetOutputName targetOutputExtension)
+    if(NOT TARGET ${targetName})
+        message(FATAL_ERROR "get_target_output_name: Target \"${targetName}\" does not exist.")
+    endif()
+
+    get_target_property(filePrefix ${targetName} PREFIX)
+    get_target_property(targetType ${targetName} TYPE)
+    if("${targetType}" STREQUAL "EXECUTABLE")
+        set(fileSuffix ${CMAKE_EXECUTABLE_SUFFIX})
+    elseif("${targetType}" STREQUAL "SHARED_LIBRARY")
+        if(UNIX AND "${filePrefix}" STREQUAL "filePrefix-NOTFOUND")
+            set(filePrefix "lib")
+        endif()
+        set(fileSuffix ${CMAKE_SHARED_LIBRARY_SUFFIX})
+        #TODO: macOS FRAMEWORK==TRUE => .framework
+    elseif("${targetType}" STREQUAL "STATIC_LIBRARY")
+        if(UNIX AND "${filePrefix}" STREQUAL "filePrefix-NOTFOUND")
+            set(filePrefix "lib")
+        endif()
+        set(fileSuffix ${CMAKE_STATIC_LIBRARY_SUFFIX})
+    elseif("${targetType}" STREQUAL "MODULE_LIBRARY")
+        set(fileSuffix ${CMAKE_SHARED_MODULE_SUFFIX})
+    elseif("${targetType}" STREQUAL "INTERFACE_LIBRARY")
+        message(FATAL_ERROR "get_target_output_name: Target \"${targetName}\" is INTERFACE_LIBRARY.")
+    endif()
+
+    if("${filePrefix}" STREQUAL "filePrefix-NOTFOUND")
+        set(filePrefix "")
+    endif()
+    get_target_property(fileName ${targetName} OUTPUT_NAME)
+    if("${fileName}" STREQUAL "fileName-NOTFOUND")
+        set(fileName ${filePrefix}${targetName})
+    endif()
+    set(${targetOutputName} "${fileName}" PARENT_SCOPE)
+    set(${targetOutputExtension} "${fileSuffix}" PARENT_SCOPE)
+endfunction(get_target_output_name)
+
+
+# @param targetName          Target name for which the binary will be copied.
+# @param toPath              "workdir/{to/Path}.ext"
+#        -/-     "WORKDIR":  "workdir/bin_{arch}/{targetOutputName}.ext"
+function(copy_release_binary targetName toPath)
+    get_target_property(targetType ${targetName} TYPE)
+    if(NOT "${targetType}" MATCHES "(EXECUTABLE|SHARED_LIBRARY)")
+        message(FATAL_ERROR "copy_release_binary: \"${targetName}\" must be EXECUTABLE or SHARED_LIBRARY")
+    endif()
+
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
         return()
     endif()
 
-    if(MSVC)
-        set(fullfrom "${CMAKE_SOURCE_DIR}/build/${BUILD_FOLDER}/${CMAKE_BUILD_TYPE}/${frompath}")
+    get_target_output_name(${targetName} fileName fileExt)
+    set(fullFrom "${BUILD_DIRECTORY}/${fileName}${fileExt}")
+    if("${toPath}" STREQUAL "WORKDIR")
+        set(fullTo "${CMAKE_SOURCE_DIR}/workdir/bin_${BUILD_ARCH}/${fileName}${fileExt}")
     else()
-        set(fullfrom "${CMAKE_SOURCE_DIR}/build/${BUILD_FOLDER}/${frompath}")
+        set(fullTo "${CMAKE_SOURCE_DIR}/workdir/${toPath}${fileExt}")
     endif()
-    set(fullto "${CMAKE_SOURCE_DIR}/workdir/bin_${BUILD_ARCH}/${topath}")
 
     add_custom_command(
         TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${fullfrom}" "${fullto}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${fullFrom}" "${fullTo}"
     )
-endfunction(copy_release_file_to_workdir)
+    set_target_properties(${targetName} PROPERTIES copy_release_binary TRUE)
+endfunction(copy_release_binary)
 
-macro(copy_release_app_to_workdir basename)
-    if(WIN32)
-        copy_release_file_to_workdir("${basename}.exe" "${basename}.exe")
-    else()
-        copy_release_file_to_workdir("${basename}" "${basename}")
-    endif()
-endmacro(copy_release_app_to_workdir)
 
-macro(copy_release_lib_to_workdir basename)
-    if(WIN32)
-        copy_release_file_to_workdir("${basename}.dll" "${basename}.dll")
-    else()
-        copy_release_file_to_workdir("lib${basename}.so" "${basename}.so")
-    endif()
-endmacro(copy_release_lib_to_workdir)
-
+#  ███████ ███    ██ ████████ ██████  ██    ██     ██████   ██████  ██ ███    ██ ████████ ███████
+#  ██      ████   ██    ██    ██   ██  ██  ██      ██   ██ ██    ██ ██ ████   ██    ██    ██
+#  █████   ██ ██  ██    ██    ██████    ████       ██████  ██    ██ ██ ██ ██  ██    ██    ███████
+#  ██      ██  ██ ██    ██    ██   ██    ██        ██      ██    ██ ██ ██  ██ ██    ██         ██
+#  ███████ ██   ████    ██    ██   ██    ██        ██       ██████  ██ ██   ████    ██    ███████
 
 if("${RUN}" STREQUAL "")
     if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
@@ -953,6 +1409,9 @@ if("${RUN}" STREQUAL "")
 
 elseif("${RUN}" STREQUAL "qt5_create_ts_and_qm")
     __qt5_create_ts_and_qm_impl()
+
+elseif("${RUN}" STREQUAL "windows_pdb_zip")
+    __windows_pdb_zip()
 
 elseif("${RUN}" STREQUAL "breakpad_dump_and_strip")
     __breakpad_dump_and_strip()

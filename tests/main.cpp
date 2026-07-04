@@ -1,5 +1,7 @@
 #include "../string_utils.hpp"
 #include <cassert>
+#include <map>
+#include <regex>
 
 
 int32_t main() {
@@ -15,9 +17,12 @@ int32_t main() {
 # endif
 
     assert(u8string("").empty());
+    assert(u8string("", 0).empty());
     assert(u8string(u8"").empty());
+    assert(u8string(u8"", 0).empty());
     assert(u8string(null).empty());
     assert(u8string(null, 0).empty());
+    assert(u8string(static_cast<void*>(nullptr), 0).empty());
     assert(u8string(str) != null);
     assert(u8string(str) != "o");
     assert(u8string(str) == u8"🌍");
@@ -34,9 +39,12 @@ int32_t main() {
 # endif
 
     assert(u8string_view("").empty());
+    assert(u8string_view("", 0).empty());
     assert(u8string_view(u8"").empty());
+    assert(u8string_view(u8"", 0).empty());
     assert(u8string_view(null).empty());
     assert(u8string_view(null, 0).empty());
+    assert(u8string_view(static_cast<void*>(nullptr), 0).empty());
     assert(u8string_view(str) != null);
     assert(u8string_view(str) != "o");
     assert(u8string_view(str) == u8"🌍");
@@ -155,22 +163,77 @@ int32_t main() {
         //assert(u8str.length() == 2);
 
         u8str = u8"🌍";
-        assert(u8str.size() == 4);
-        assert(u8str.length() == 1);
-        assert(u8str.sso_active());
+        assert(u8str.size_B() == 4);
+        assert(u8str.size_cu() == 4);
+        assert(u8str.size_cp() == 1);
 
-        u8str = u8"你好 Hola Hello Olá Привет こんにちは 안녕하세요 Bonjour Hallo Ciao";
-        assert(u8str.size() == 86);
-        assert(u8str.length() == 55);
-        assert(!u8str.sso_active());
+        u8str = u8"你好 Hola Hello Olá 😀 Привет こんにちは 안녕하세요 Bonjour Hallo Ciao";
+        assert(u8str.size_B() == 91);
+        assert(u8str.size_cu() == 91);
+        assert(u8str.size_cp() == 57);
 
         u16str = u8str.toUtf16();
+        assert(u16str.size_B() == 116);
+        assert(u16str.size_cu() == 58);
+        assert(u16str.size_cp() == 57);
         assert(u16str.toUtf8() == u8str);
         assert(u16str.toUtf32().toUtf8() == u8str);
-        
+
         u32str = u8str.toUtf32();
+        assert(u32str.size_B() == 228);
+        assert(u32str.size_cu() == 57);
+        assert(u32str.size_cp() == 57);
         assert(u32str.toUtf8() == u8str);
         assert(u32str.toUtf16().toUtf8() == u8str);
+
+        //assert(u8str.at_cp(20) == U'П');
+        assert(u8string_view(u8str).at_cp(20) == U'П');
+        size_t idx = 0;
+        for (auto it = u8str.begin_cp(); it != u8str.end_cp(); ++it) {
+            if (idx == 18) {
+                assert(*it == U'😀');
+            }
+            else if (idx == 20) {
+                assert(*it == U'П');
+            }
+            ++idx;
+        }
+        assert(u16str[21] == u'П');
+        assert(u32str[20] == U'П');
+    }
+    {
+        u8string u8str;
+        u8str.push_back_cp('1');
+        u8str.push_back_cp(U'🌍');
+        assert(u8str.size_cu() == 5);
+        assert(u8str.size_cp() == 2);
+        assert(u8str.front_cp() == '1');
+        assert(u8str.back_cp() == U'🌍');
+        u8str.pop_back_cp();
+        assert(u8str.size_cu() == 1);
+        assert(u8str.size_cp() == 1);
+        assert(u8str.back_cp() == '1');
+    }
+    {
+        std::map<u8string, int32_t> map;
+        map["hello"] = 1;
+        map[u8"äbc"] = 2;
+        map[u8"你好"] = 3;
+        map[u8"🌍"] = 4;
+
+        assert(map[std::string("hello")] == 1);
+        assert(map[u8"äbc"] == 2);
+        assert(map[u8"你好"] == 3);
+        assert(map[u8"🌍"] == 4);
+
+        auto it = map.begin();
+        assert(it->first == "hello"); ++it;
+        assert(it->first == u8"äbc"); ++it;
+    }
+    {
+        std::regex re(u8string(u8"ä+"));
+        assert(std::regex_search(u8string(u8"äbc"), re));
+        assert(!std::regex_search("abc", re));
     }
     return 0;
 }
