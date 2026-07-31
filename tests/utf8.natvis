@@ -6,8 +6,8 @@
         <Intrinsic Name="_capacity_B_" Expression="_Mypair._Myval2._Myres" />
         <Intrinsic Name="_is_sso_" Expression="_Mypair._Myval2._Myres &lt; 16" />
         <Intrinsic Name="_data_" Expression="_is_sso_() ? _Mypair._Myval2._Bx._Buf : _Mypair._Myval2._Bx._Ptr" />
-        <DisplayString>{_data_(),s8}</DisplayString>
-        <StringView>_data_(),s8</StringView>
+        <DisplayString>{_data_(),[_size_B_()]s8}</DisplayString>
+        <StringView>_data_(),[_size_B_()]s8</StringView>
 
         <Expand>
             <Item Name="[size_B]" ExcludeView="simple">_size_B_()</Item>
@@ -88,8 +88,8 @@
 
         <Intrinsic Name="_size_B_" Expression="_Mysize" />
         <Intrinsic Name="_data_" Expression="_Mydata" />
-        <DisplayString>{_data_(),s8}</DisplayString>
-        <StringView>_data_(),s8</StringView>
+        <DisplayString>{_data_(),[_size_B_()]s8}</DisplayString>
+        <StringView>_data_(),[_size_B_()]s8</StringView>
 
         <Expand>
             <Item Name="[size_B]" ExcludeView="simple">_size_B_()</Item>
@@ -170,8 +170,8 @@
     <Type Name="nonstd::sv_lite::basic_string_view&lt;char,*&gt;">
         <Intrinsic Name="_size_B_" Expression="size_" />
         <Intrinsic Name="_data_" Expression="data_" />
-        <DisplayString>{_data_(),s8}</DisplayString>
-        <StringView>_data_(),s8</StringView>
+        <DisplayString>{_data_(),[_size_B_()]s8}</DisplayString>
+        <StringView>_data_(),[_size_B_()]s8</StringView>
 
         <Expand>
             <Item Name="[size_B]" ExcludeView="simple">_size_B_()</Item>

@@ -2,6 +2,7 @@
 #include <cassert>
 #include <map>
 #include <regex>
+#include <array>
 
 
 int32_t main() {
@@ -107,13 +108,13 @@ int32_t main() {
     {
         u8string buffer(32, '\0');
         u8string_view result = utils::to_string(12.34f, buffer);
-        assert(!result.empty());
+        assert(not result.empty());
         assert(result == "12.34");
     }
     {
         u8string buffer(32, '\0');
         u8string_view result = utils::to_string(0xDEADBEEF, buffer, true);
-        assert(!result.empty());
+        assert(not result.empty());
         assert(result == "deadbeef");
     }
     {
@@ -129,11 +130,22 @@ int32_t main() {
         assert(u32 == 0xDEADBEEF);
     }
     {
-        u8string_view result = utils::trimm("\n 12.34 \t");
-        assert(result == "12.34");
+        assert(u8string_view().trim().empty());
+        assert(u8string_view("  ").trim().empty());
+        assert(u8string_view("  ").trim("", false) == "  ");
+        assert(u8string_view("\n 12.34 \t").trim() == "12.34");
+        assert(u8string_view(u8" 😀 ").trim() == u8"😀");
+        assert(u8string_view("  ").trim('<', '>') == "");
+        assert(u8string_view(" @ ").trim('<', '>') == "@");
+        assert(u8string_view(u8" | 🌍 | ").trim("|") == u8"🌍");
+        assert(u8string_view(u8"| 🌍 |").trim("|", false) == u8" 🌍 ");
+        assert(u8string_view(u8R"( <😀> <\>😀\<> \ 🌍\  <\>😀\<> </😀> )")
+            .trim('<', '>') == u8R"(\ 🌍\ )");
+        //assert(u8string_view(u8R"( <😀\>">\""> <\>😀\<> \ 🌍\  <\>😀\<> </😀> )")
+        //    .trim('<', '>') == u8R"(\ 🌍\ )");
     }
     {
-        utils::split(u8"|12||🌍|34|5\\|6|", "|", [](u8string_view part, uint32_t idx) {
+        u8string_view(u8"|12||🌍|34|5\\|6|").split("|", [](u8string_view part, uint32_t idx) {
             switch (idx) {
             case 0: assert(part == "12"); break;
             case 1: assert(part == u8"🌍"); break;
@@ -142,6 +154,13 @@ int32_t main() {
             default: assert(false); break;
             }
         });
+
+        std::array<u8string_view, 4> parts;
+        u8string_view(u8"|12||🌍|34|5\\|6|").split("|", parts);
+        assert(parts[0] == "12");
+        assert(parts[1] == u8"🌍");
+        assert(parts[2] == "34");
+        assert(parts[3] == "5\\|6");
     }
     {
         constexpr u8string_view str = "user@email.com";
@@ -154,7 +173,6 @@ int32_t main() {
         assert(com == "com");
     }
     {
-        u8string u8str;
         u16string u16str;
         u32string u32str;
 
@@ -202,7 +220,7 @@ int32_t main() {
         assert(u32str[20] == U'П');
     }
     {
-        u8string u8str;
+        u8str.clear();
         u8str.push_back_cp('1');
         u8str.push_back_cp(U'🌍');
         assert(u8str.size_cu() == 5);
@@ -213,6 +231,33 @@ int32_t main() {
         assert(u8str.size_cu() == 1);
         assert(u8str.size_cp() == 1);
         assert(u8str.back_cp() == '1');
+    }
+    {
+        u8strv = "ABCDEFGHIJ";
+        assert(u8strv.slice() == u8strv);
+        assert(u8strv.slice(3) == "DEFGHIJ");
+        assert(u8strv.slice(4, 4).empty());
+        assert(u8strv.slice(5, 2).empty());
+        assert(u8strv.slice(5, 100) == "FGHIJ");
+        assert(u8strv.slice(0, 4) == "ABCD");
+        assert(u8strv.slice(2, 6) == "CDEF");
+        assert(u8strv.slice(-3) == "HIJ");
+        assert(u8strv.slice(0, -2) == "ABCDEFGH");
+        assert(u8strv.slice(-5, -2) == "FGH");
+        assert(u8strv.slice(5, 100) == "FGHIJ");
+
+        u8strv = u8"A🌍CДEФGH😀J";
+        assert(u8strv.slice_cp() == u8strv);
+        assert(u8strv.slice_cp(3) == u8"ДEФGH😀J");
+        assert(u8strv.slice_cp(4, 4).empty());
+        assert(u8strv.slice_cp(5, 2).empty());
+        assert(u8strv.slice_cp(5, 100) == u8"ФGH😀J");
+        assert(u8strv.slice_cp(0, 4) == u8"A🌍CД");
+        assert(u8strv.slice_cp(2, 6) == u8"CДEФ");
+        assert(u8strv.slice_cp(-3) == u8"H😀J");
+        assert(u8strv.slice_cp(0, -2) == u8"A🌍CДEФGH");
+        assert(u8strv.slice_cp(-5, -2) == u8"ФGH");
+        assert(u8strv.slice_cp(5, 100) == u8"ФGH😀J");
     }
     {
         std::map<u8string, int32_t> map;
@@ -231,9 +276,25 @@ int32_t main() {
         assert(it->first == u8"äbc"); ++it;
     }
     {
+        std::map<u8string_view, int32_t> map;
+        map["hello"] = 1;
+        map[u8"äbc"] = 2;
+        map[u8"你好"] = 3;
+        map[u8"🌍"] = 4;
+
+        assert(map[std::string("hello")] == 1);
+        assert(map[u8"äbc"] == 2);
+        assert(map[u8"你好"] == 3);
+        assert(map[u8"🌍"] == 4);
+
+        auto it = map.begin();
+        assert(it->first == "hello"); ++it;
+        assert(it->first == u8"äbc"); ++it;
+    }
+    {
         std::regex re(u8string(u8"ä+"));
         assert(std::regex_search(u8string(u8"äbc"), re));
-        assert(!std::regex_search("abc", re));
+        assert(not std::regex_search("abc", re));
     }
     return 0;
 }

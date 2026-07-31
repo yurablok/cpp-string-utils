@@ -1,11 +1,14 @@
 // C++ String Utils
 //
-// C++17 and C++11 std::string_view-based and UTF-8-based utils.
+// C++17 and C++11 std::string-and-std::string_view-based and UTF-8-based utils.
+// https://utf8everywhere.org/
 //
 // Author: Yurii Blok
 // License: BSL-1.0
 // https://github.com/yurablok/cpp-string-utils
 // History:
+// v0.9 2026-Jul-31     Added `u8string_view::` `slice`, `slice_cp`, `trim`, `split`.
+//                      Deleted `utils::` `trimm`, `split`.
 // v0.8 2026-Jul-05     `u8string` is now based on `std::string`.
 // v0.7 2024-May-12     Added `u8`,`u16`,`u32`... `string` and `string_view`.
 // v0.6 2023-Apr-26     Fixed build with clang-cl. Fixed `substr` [2].
@@ -23,32 +26,40 @@
 #include <functional>
 #include <cmath>
 
+#ifndef _NODISCARD
+#   if  __cplusplus >= 201703L or (defined(_MSVC_LANG) and _MSVC_LANG >= 201703L)
+#       define _NODISCARD [[nodiscard]]
+#   else
+#       define _NODISCARD
+#   endif
+#endif
+
 #ifndef _CONSTEXPR23
 #   if  __cplusplus >= 202302L or (defined(_MSVC_LANG) and _MSVC_LANG >= 202302L)
-#      define _CONSTEXPR23 constexpr
+#       define _CONSTEXPR23 constexpr
 #   else
-#      define _CONSTEXPR23 inline
+#       define _CONSTEXPR23 inline
 #   endif
 #endif
 #ifndef _CONSTEXPR20
 #   if  __cplusplus >= 202002L or (defined(_MSVC_LANG) and _MSVC_LANG >= 202002L)
-#      define _CONSTEXPR20 constexpr
+#       define _CONSTEXPR20 constexpr
 #   else
-#      define _CONSTEXPR20 inline
+#       define _CONSTEXPR20 inline
 #   endif
 #endif
 #ifndef _CONSTEXPR17
 #   if  __cplusplus >= 201703L or (defined(_MSVC_LANG) and _MSVC_LANG >= 201703L)
-#      define _CONSTEXPR17 constexpr
+#       define _CONSTEXPR17 constexpr
 #   else
-#      define _CONSTEXPR17 inline
+#       define _CONSTEXPR17 inline
 #   endif
 #endif
 #ifndef _CONSTEXPR14
 #   if  __cplusplus >= 201402L or (defined(_MSVC_LANG) and _MSVC_LANG >= 201402L)
-#      define _CONSTEXPR14 constexpr
+#       define _CONSTEXPR14 constexpr
 #   else
-#      define _CONSTEXPR14 inline
+#       define _CONSTEXPR14 inline
 #   endif
 #endif
 
@@ -166,6 +177,7 @@ public:
     }
 
     _CONSTEXPR14 size_t size_B() const noexcept;
+    // size
     _CONSTEXPR14 size_t size_cu() const noexcept;
     // O(n)
     _CONSTEXPR14 size_t size_cp() const noexcept;
@@ -179,14 +191,38 @@ public:
 
     static _CONSTEXPR14 size_t cp_width(const char* p) noexcept;
 
+    _NODISCARD _CONSTEXPR14 u8string_view substr(size_t offset = 0, size_t count = npos) const;
+    // O(n)
+    //_NODISCARD _CONSTEXPR14 u8string_view substr_cp(size_t offset = 0, size_t count = npos) const;
+
+    _NODISCARD _CONSTEXPR14 u8string_view slice(intptr_t begin = 0, intptr_t end = npos) const noexcept;
+    _NODISCARD _CONSTEXPR14 u8string_view slice_cp(intptr_t begin = 0, intptr_t end = npos) const noexcept;
+
+    _NODISCARD _CONSTEXPR20 u8string_view trim(
+        std::string_view by = "", bool whitespace = true) const noexcept;
+    _NODISCARD _CONSTEXPR20 u8string_view trim(char open, char close,
+        std::string_view by = "", bool whitespace = true, char escape = '\\') const noexcept;
+
+    inline void split(const std::string_view by,
+        const std::function<void(u8string_view part, uint32_t idx)> handler,
+        const bool withEmpty = false, const char escape = '\\') const;
+
+    template <typename container_t>
+    inline void split(const std::string_view by, container_t& container,
+            const bool withEmpty = false, const char escape = '\\') const {
+        split(by, [&](u8string_view part, uint32_t idx) {
+            if (idx >= container.size()) {
+                return;
+            }
+            container[size_t(idx)] = part;
+        });
+    }
+
     static _CONSTEXPR14 char32_t decode(const char* data) noexcept;
 
     static _CONSTEXPR14 size_t encode(char32_t ch, char* out) noexcept;
 
-    // UTF-8 iterator: dereferences to char32_t codepoints
     class const_iterator {
-        const char* m_ptr = nullptr;
-        //friend class u8string;
     public:
         using iterator_category = std::bidirectional_iterator_tag;
         using value_type = char32_t;
@@ -232,6 +268,8 @@ public:
         _CONSTEXPR14 const char* ptr() const noexcept {
             return m_ptr;
         }
+    private:
+        const char* m_ptr = nullptr;
     }; // class const_iterator
 
     _CONSTEXPR14 const_iterator begin_cp() const noexcept {
@@ -335,6 +373,7 @@ public:
 # endif
 
     _CONSTEXPR20 size_t size_B() const noexcept;
+    // size
     _CONSTEXPR20 size_t size_cu() const noexcept;
     // O(n)
     _CONSTEXPR20 size_t size_cp() const noexcept;
@@ -350,6 +389,10 @@ public:
     _CONSTEXPR20 char32_t back_cp() const noexcept;
     _CONSTEXPR20 void push_back_cp(char32_t ch);
     _CONSTEXPR20 void pop_back_cp() noexcept;
+
+    _CONSTEXPR20 u8string_view view() const noexcept {
+        return u8string_view(*this);
+    }
 
     // Little-endian
     _CONSTEXPR20 u16string toUtf16(const bool strict = true) const;
@@ -374,6 +417,7 @@ public:
     _CONSTEXPR20 u32string toUtf32(const bool strict = true) const;
 
     _CONSTEXPR14 size_t size_B() const noexcept;
+    // size
     _CONSTEXPR14 size_t size_cu() const noexcept;
     // O(n)
     _CONSTEXPR14 size_t size_cp() const noexcept;
@@ -392,6 +436,7 @@ public:
     _CONSTEXPR20 u32string toUtf32(const bool strict = true) const;
 
     _CONSTEXPR20 size_t size_B() const noexcept;
+    // size
     _CONSTEXPR20 size_t size_cu() const noexcept;
     // O(n)
     _CONSTEXPR20 size_t size_cp() const noexcept;
@@ -414,7 +459,9 @@ public:
     _CONSTEXPR20 u16string toUtf16(const bool strict = true) const;
 
     _CONSTEXPR14 size_t size_B() const noexcept;
+    // size
     _CONSTEXPR14 size_t size_cu() const noexcept;
+    // size
     _CONSTEXPR14 size_t size_cp() const noexcept;
 };
 
@@ -431,67 +478,16 @@ public:
     _CONSTEXPR20 u16string toUtf16(const bool strict = true) const;
 
     _CONSTEXPR20 size_t size_B() const noexcept;
+    // size
     _CONSTEXPR20 size_t size_cu() const noexcept;
+    // size
     _CONSTEXPR20 size_t size_cp() const noexcept;
 };
 
 
 namespace utils {
 
-
-inline u8string_view trimm(u8string_view string,
-        const std::string_view by = std::string_view("\t\n\r \0", 5)) noexcept {
-    while (not string.empty()) {
-        if (by.find(string.front()) == std::string_view::npos) {
-            break;
-        }
-        string = string.substr(1);
-    }
-    while (not string.empty()) {
-        if (by.find(string.back()) == std::string_view::npos) {
-            break;
-        }
-        string = string.substr(0, string.size() - 1);
-    }
-    return string;
-}
-
-inline void split(const u8string_view str, const std::string_view by,
-        const std::function<void(u8string_view part, uint32_t idx)> handler,
-        const bool withEmpty = false, const char escape = '\\') noexcept {
-    if (by.empty() or not handler) {
-        return;
-    }
-    size_t begin = 0;
-    bool isPrevEscape = false;
-    uint32_t idx = 0;
-    for (size_t i = 0; i < str.size(); ++i) {
-        if (not isPrevEscape) {
-            if (str[i] == escape) {
-                isPrevEscape = true;
-                continue;
-            }
-        }
-        else {
-            isPrevEscape = false;
-            continue;
-        }
-        if (by.find(str[i]) == std::string_view::npos) {
-            continue;
-        }
-        const u8string_view part = str.substr(begin, i - begin);
-        if (withEmpty or not part.empty()) {
-            handler(part, idx++);
-        }
-        begin = i + 1;
-    }
-    const u8string_view part = str.substr(begin);
-    if (not part.empty()) {
-        handler(part, idx);
-    }
-}
-
-inline u8string_view substr(const u8string_view str, size_t& offset,
+_CONSTEXPR20 u8string_view substr(const u8string_view str, size_t& offset,
         const std::string_view split_by,
         const bool withEmpty = false, const char escape = '\\') noexcept {
     if (split_by.empty()) {
@@ -728,7 +724,7 @@ inline u8string_view to_string(const float number, const u8string_view buffer) n
     if (length <= 0) {
         return {};
     }
-    return trimm(buffer.substr(0, length), "0\0");
+    return buffer.substr(0, length).trim("0\0", false);
 }
 inline u8string_view to_string(const double number, const u8string_view buffer) noexcept {
     const int32_t length = std::trunc(number) == number
@@ -739,7 +735,7 @@ inline u8string_view to_string(const double number, const u8string_view buffer) 
     if (length <= 0) {
         return {};
     }
-    return trimm(buffer.substr(0, length), "0\0");
+    return buffer.substr(0, length).trim("0\0", false);
 }
 
 #endif // CPP_STRING_UTILS_LIB_CHARCONV_FLOAT
@@ -750,7 +746,7 @@ inline u8string_view to_string(const double number, const u8string_view buffer) 
 
 template<typename integer_t,
     typename std::enable_if_t<std::is_integral_v<integer_t>, bool> = true>
-inline bool from_string(const u8string_view string, integer_t& number,
+_CONSTEXPR23 bool from_string(const u8string_view string, integer_t& number,
         const bool hex = false) noexcept {
     auto [ptr, ec] = std::from_chars(
         string.data(),
@@ -850,7 +846,7 @@ inline bool from_string(const u8string_view string, uint64_t& number,
 
 template<typename floating_t,
     typename std::enable_if_t<std::is_floating_point_v<floating_t>, bool> = true>
-inline bool from_string(const u8string_view string, floating_t& number) noexcept {
+_CONSTEXPR23 bool from_string(const u8string_view string, floating_t& number) noexcept {
     auto [ptr, ec] = std::from_chars(
         string.data(),
         string.data() + string.size(),
@@ -1009,6 +1005,196 @@ _CONSTEXPR14 size_t u8string_view::cp_width(const char* p) noexcept {
     if ((c & 0xF8) == 0xF0) { return 4; }
     if ((c & 0xFC) == 0xF8) { return 5; }
     return 1; // invalid, treat as 1 byte
+}
+
+_NODISCARD _CONSTEXPR14 u8string_view u8string_view::substr(size_t offset, size_t count) const {
+    return std::string_view::substr(offset, count);
+}
+
+_NODISCARD _CONSTEXPR14 u8string_view u8string_view::slice(intptr_t begin, intptr_t end) const noexcept {
+    const intptr_t len = static_cast<intptr_t>(size_B());
+    intptr_t b = begin < 0 ? len + begin : begin;
+    if (b < 0) {
+        b = 0;
+    }
+    if (b > len) {
+        b = len;
+    }
+    intptr_t e = npos;
+    if (static_cast<size_t>(end) == npos) {
+        e = len;
+    }
+    else if (end < 0) {
+        e = len + end;
+    }
+    else {
+        e = end;
+    }
+    if (e < 0) {
+        e = 0;
+    }
+    if (e > len) {
+        e = len;
+    }
+    if (b >= e) {
+        return {};
+    }
+    return std::string_view::substr(static_cast<size_t>(b), static_cast<size_t>(e - b));
+}
+
+_NODISCARD _CONSTEXPR14 u8string_view u8string_view::slice_cp(intptr_t begin, intptr_t end) const noexcept {
+    const size_t len = size_B();
+    const char* b = nullptr;
+    if (begin >= 0) {
+        b = data();
+        for (intptr_t i = 0; i < begin and static_cast<size_t>(b - data()) < len; ++i) {
+            b += cp_width(b);
+        }
+    }
+    else {
+        b = data() + len;
+        for (intptr_t i = 0; i < -begin and b > data(); ++i) {
+            --b;
+            while (b > data() and (static_cast<uint8_t>(*b) & 0xC0) == 0x80) {
+                --b;
+            }
+        }
+    }
+    const char* e = nullptr;
+    if (static_cast<size_t>(end) == npos) {
+        e = data() + len;
+    }
+    else if (end >= 0) {
+        e = data();
+        for (intptr_t i = 0; i < end and static_cast<size_t>(e - data()) < len; ++i) {
+            e += cp_width(e);
+        }
+    }
+    else {
+        e = data() + len;
+        for (intptr_t i = 0; i < -end and e > data(); ++i) {
+            --e;
+            while (e > data() and (static_cast<uint8_t>(*e) & 0xC0) == 0x80) {
+                --e;
+            }
+        }
+    }
+    if (b >= e) {
+        return {};
+    }
+    return std::string_view::substr(static_cast<size_t>(b - data()), static_cast<size_t>(e - b));
+}
+
+_NODISCARD _CONSTEXPR20 u8string_view u8string_view::trim(
+        std::string_view by, bool whitespace) const noexcept {
+    constexpr std::string_view s("\r\n\t\f\v \0", 7);
+    const char* beg = data();
+    const char* end = data() + size_B();
+    while (beg < end) {
+        if ((not whitespace or s.find(*beg) == std::string_view::npos)
+                and by.find(*beg) == std::string_view::npos) {
+            break;
+        }
+        ++beg;
+    }
+    while (beg < end) {
+        if ((not whitespace or s.find(*(end - 1)) == std::string_view::npos)
+                and by.find(*(end - 1)) == std::string_view::npos) {
+            break;
+        }
+        --end;
+    }
+    return substr(static_cast<size_t>(beg - data()), static_cast<size_t>(end - beg));
+}
+_NODISCARD _CONSTEXPR20 u8string_view u8string_view::trim(char open, char close,
+        std::string_view by, bool whitespace, char escape) const noexcept {
+    constexpr std::string_view s("\r\n\t\f\v \0", 7);
+    const char* beg = data();
+    const char* b = beg;
+    const char* e = beg;
+    const char* end = data() + size_B();
+    bool opened = false;
+    //const char* opened = nullptr;
+    while (beg < end) {
+        if (opened) {
+            if (*beg == escape) {
+                beg += cp_width(beg + 1) + 1;
+                continue;
+            }
+            else if (*beg == close) {
+                opened = false;
+            }
+        }
+        else if (*beg == open) {
+            opened = true;
+        }
+        else if ((not whitespace or s.find(*beg) == std::string_view::npos)
+                and by.find(*beg) == std::string_view::npos) {
+            b = beg;
+            break;
+        }
+        ++beg;
+    }
+    while (beg < end) {
+        if (opened) {
+            if (*beg == escape) {
+                beg += cp_width(beg + 1) + 1;
+                continue;
+            }
+            else if (*beg == close) {
+                opened = false;
+            }
+        }
+        else if (*beg == escape) {
+            beg += cp_width(beg + 1) + 1;
+            e = beg;
+            continue;
+        }
+        else if (*beg == open) {
+            opened = true;
+        }
+        else if ((not whitespace or s.find(*beg) == std::string_view::npos)
+                and by.find(*beg) == std::string_view::npos) {
+            e = beg + 1;
+        }
+        ++beg;
+    }
+    if (e <= b) {
+        return {};
+    }
+    return substr(static_cast<size_t>(b - data()), static_cast<size_t>(e - b));
+}
+
+inline void u8string_view::split(const std::string_view by,
+        const std::function<void(u8string_view part, uint32_t idx)> handler,
+        const bool withEmpty, const char escape) const {
+    if (by.empty() or not handler) {
+        return;
+    }
+    const char* beg = data();
+    const char* ptr = beg;
+    const char* end = data() + size_B();
+    uint32_t idx = 0;
+    while (ptr < end) {
+        if (*ptr == escape) {
+            ptr += cp_width(ptr + 1) + 1;
+        }
+        else if (by.find(*ptr) != std::string_view::npos) {
+            const u8string_view part = substr(beg - data(), ptr - beg);
+            if (withEmpty or not part.empty()) {
+                handler(part, idx++);
+            }
+            ++ptr;
+            beg = ptr;
+        }
+        else {
+            ++ptr;
+        }
+    }
+    const u8string_view part = substr(beg - data());
+    if (withEmpty or not part.empty()) {
+        handler(part, idx);
+    }
 }
 
 _CONSTEXPR14 char32_t u8string_view::decode(const char* data) noexcept {
