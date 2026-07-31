@@ -1,0 +1,5 @@
+/tests/build
+/tests/workdir/bin_*
+/tests/.vs
+/tests/.vscode/ipch
+/tests/.clangd
