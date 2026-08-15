@@ -1,6 +1,7 @@
 #include "../string_utils.hpp"
 #include <cassert>
 #include <map>
+#include <unordered_map>
 #include <regex>
 #include <array>
 
@@ -267,6 +268,9 @@ int32_t main() {
         map[u8"🌍"] = 4;
 
         assert(map[std::string("hello")] == 1);
+        assert(map[std::string_view("hello")] == 1);
+        assert(map[u8string("hello")] == 1);
+        assert(map[u8string_view("hello")] == 1);
         assert(map[u8"äbc"] == 2);
         assert(map[u8"你好"] == 3);
         assert(map[u8"🌍"] == 4);
@@ -276,6 +280,15 @@ int32_t main() {
         assert(it->first == u8"äbc"); ++it;
     }
     {
+        std::unordered_map<u8string, int32_t> map;
+        map["hello"] = 1;
+
+        assert(map[std::string("hello")] == 1);
+        assert(map[std::string_view("hello")] == 1);
+        assert(map[u8string("hello")] == 1);
+        assert(map[u8string_view("hello")] == 1);
+    }
+    {
         std::map<u8string_view, int32_t> map;
         map["hello"] = 1;
         map[u8"äbc"] = 2;
@@ -283,6 +296,9 @@ int32_t main() {
         map[u8"🌍"] = 4;
 
         assert(map[std::string("hello")] == 1);
+        assert(map[std::string_view("hello")] == 1);
+        assert(map[u8string("hello")] == 1);
+        assert(map[u8string_view("hello")] == 1);
         assert(map[u8"äbc"] == 2);
         assert(map[u8"你好"] == 3);
         assert(map[u8"🌍"] == 4);
@@ -290,6 +306,15 @@ int32_t main() {
         auto it = map.begin();
         assert(it->first == "hello"); ++it;
         assert(it->first == u8"äbc"); ++it;
+    }
+    {
+        std::unordered_map<u8string_view, int32_t> map;
+        map["hello"] = 1;
+
+        assert(map[std::string("hello")] == 1);
+        assert(map[std::string_view("hello")] == 1);
+        assert(map[u8string("hello")] == 1);
+        assert(map[u8string_view("hello")] == 1);
     }
     {
         std::regex re(u8string(u8"ä+"));

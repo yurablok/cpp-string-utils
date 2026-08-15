@@ -120,6 +120,8 @@ assert(u32str.toUtf16().toUtf8() == u8str);
 ```cpp
 std::map<u8string, int32_t> map;
 std::map<u8string_view, int32_t> map;
+std::unordered_map<u8string, int32_t> map;
+std::unordered_map<u8string_view, int32_t> map;
 
 std::regex re(u8string(u8"ä+"));
 assert(std::regex_search(u8string(u8"äbc"), re));

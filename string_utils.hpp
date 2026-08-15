@@ -7,6 +7,7 @@
 // License: BSL-1.0
 // https://github.com/yurablok/cpp-string-utils
 // History:
+// v0.9.1 2026-Aug-15   Added `std::hash<u8string>` and `std::hash<u8string_view>`.
 // v0.9 2026-Jul-31     Added `u8string_view::` `slice`, `slice_cp`, `trim`, `split`.
 //                      Deleted `utils::` `trimm`, `split`.
 // v0.8 2026-Jul-05     `u8string` is now based on `std::string`.
@@ -399,6 +400,21 @@ public:
     // Little-endian
     _CONSTEXPR20 u32string toUtf32() const;
 }; // class u8string
+
+namespace std {
+    template <>
+    struct hash<::u8string> {
+        size_t operator()(const ::u8string& str) const noexcept {
+            return std::hash<std::string_view>()(std::string_view(str.data(), str.size_B()));
+        }
+    };
+    template <>
+    struct hash<::u8string_view> {
+        size_t operator()(const ::u8string_view str) const noexcept {
+            return std::hash<std::string_view>()(std::string_view(str.data(), str.size_B()));
+        }
+    };
+}
 
 
 class u16string_view
