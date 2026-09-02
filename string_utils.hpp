@@ -7,6 +7,7 @@
 // License: BSL-1.0
 // https://github.com/yurablok/cpp-string-utils
 // History:
+// v0.9.2 2026-Sep-03   Fixed building with Clang.
 // v0.9.1 2026-Aug-15   Added `std::hash<u8string>` and `std::hash<u8string_view>`.
 // v0.9 2026-Jul-31     Added `u8string_view::` `slice`, `slice_cp`, `trim`, `split`.
 //                      Deleted `utils::` `trimm`, `split`.
@@ -44,7 +45,11 @@
 #endif
 #ifndef _CONSTEXPR20
 #   if  __cplusplus >= 202002L or (defined(_MSVC_LANG) and _MSVC_LANG >= 202002L)
-#       define _CONSTEXPR20 constexpr
+#       if defined(__clang__) and __clang_major__ < 16
+#           define _CONSTEXPR20 inline
+#       else
+#           define _CONSTEXPR20 constexpr
+#       endif
 #   else
 #       define _CONSTEXPR20 inline
 #   endif
@@ -68,7 +73,20 @@
 #   define CPP_STRING_UTILS_LIB_CHARCONV
 #   define CPP_STRING_UTILS_LIB_CHARCONV_FLOAT
 #elif __cplusplus >= 201703L
-#   if defined(__GNUG__) and not defined(__llvm__)
+#   if defined(__clang__)
+#       define CPP_STRING_UTILS_LIB_CHARCONV
+        // Float to_chars: Clang >=15 (libc++), GCC >= 11, AppleClang >= 22.4 (Xcode 16.4)
+#       if (!defined(__apple_build_version__) && __clang_major__ >= 15 \
+                && defined(__cpp_lib_to_chars) \
+                && __has_include(<charconv>))
+#           define CPP_STRING_UTILS_LIB_CHARCONV_FLOAT
+#       elif (defined(__GLIBCXX__) && __GLIBCXX__ >= 20210517)
+#           define CPP_STRING_UTILS_LIB_CHARCONV_FLOAT
+#       elif (defined(__apple_build_version__) && __apple_build_version__ >= 22400000)
+#           define CPP_STRING_UTILS_LIB_CHARCONV_FLOAT
+#       endif
+#       define CJWD_CPP_LIB_VARIANT
+#   elif defined(__GNUG__)
 #       if __GNUC__ >= 8 and __GNUC_MINOR__ >= 1
 #           define CPP_STRING_UTILS_LIB_CHARCONV
 #           if defined(__cpp_lib_to_chars) or defined(_GLIBCXX_HAVE_USELOCALE)
